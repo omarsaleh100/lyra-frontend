@@ -13,14 +13,23 @@ import {
 import { router } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
-const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Other'];
-const ORIENTATION_OPTIONS = ['Everyone', 'Men', 'Women'];
+const GENDER_OPTIONS = [
+  { label: 'Male', value: 'man' },
+  { label: 'Female', value: 'woman' },
+  { label: 'Non-binary', value: 'nonbinary' },
+];
+
+const ORIENTATION_OPTIONS = [
+  { label: 'Everyone', value: ['man', 'woman', 'nonbinary'] },
+  { label: 'Men', value: ['man'] },
+  { label: 'Women', value: ['woman'] },
+];
 
 export default function SignupScreen() {
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
-  const [gender, setGender] = useState('');
-  const [orientation, setOrientation] = useState('');
+  const [gender, setGender] = useState('');           // stores the value, e.g. 'man'
+  const [orientation, setOrientation] = useState('');   // stores the label, e.g. 'Everyone'
   const [saving, setSaving] = useState(false);
 
   const canContinue = name.trim() && age && gender && orientation;
@@ -33,13 +42,20 @@ export default function SignupScreen() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) throw new Error('Not authenticated');
 
+      // Map orientation label to the actual array of gender values
+      const showMeMap: Record<string, string[]> = {
+        'Everyone': ['man', 'woman', 'nonbinary'],
+        'Men': ['man'],
+        'Women': ['woman'],
+      };
+
       const { error } = await supabase
         .from('users')
         .update({
           name: name.trim(),
           age: parseInt(age, 10),
-          gender,
-          show_me: orientation,
+          gender: [gender],                      // wrap in array, e.g. ['man']
+          show_me: showMeMap[orientation] || [],  // e.g. ['man', 'woman', 'nonbinary']
         })
         .eq('auth_id', authUser.id);
 
@@ -103,11 +119,11 @@ export default function SignupScreen() {
         <View style={styles.chipRow}>
           {GENDER_OPTIONS.map((g) => (
             <TouchableOpacity
-              key={g}
-              style={[styles.chip, gender === g && styles.chipActive]}
-              onPress={() => setGender(g)}
+              key={g.value}
+              style={[styles.chip, gender === g.value && styles.chipActive]}
+              onPress={() => setGender(g.value)}
             >
-              <Text style={[styles.chipText, gender === g && styles.chipTextActive]}>{g}</Text>
+              <Text style={[styles.chipText, gender === g.value && styles.chipTextActive]}>{g.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -117,11 +133,11 @@ export default function SignupScreen() {
         <View style={styles.chipRow}>
           {ORIENTATION_OPTIONS.map((o) => (
             <TouchableOpacity
-              key={o}
-              style={[styles.chip, orientation === o && styles.chipActive]}
-              onPress={() => setOrientation(o)}
+              key={o.label}
+              style={[styles.chip, orientation === o.label && styles.chipActive]}
+              onPress={() => setOrientation(o.label)}
             >
-              <Text style={[styles.chipText, orientation === o && styles.chipTextActive]}>{o}</Text>
+              <Text style={[styles.chipText, orientation === o.label && styles.chipTextActive]}>{o.label}</Text>
             </TouchableOpacity>
           ))}
         </View>

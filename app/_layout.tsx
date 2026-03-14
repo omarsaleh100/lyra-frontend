@@ -32,8 +32,7 @@ export default function RootLayout() {
     const inAppGroup = segments[0] === '(app)';
 
     if (!session && inAppGroup) {
-      // Not signed in but trying to access app — redirect to onboarding
-      // (onboarding doesn't require auth, interview does)
+      router.replace('/(auth)/login');
     }
   }, [session, segments, initialized]);
 
