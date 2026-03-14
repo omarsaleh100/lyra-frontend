@@ -1,130 +1,363 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+  Dimensions,
+  Animated,
 } from 'react-native';
+import Svg, {
+  Defs,
+  RadialGradient,
+  Stop,
+  Circle,
+  Ellipse,
+  Rect,
+  LinearGradient as SvgLinearGradient,
+  Path,
+} from 'react-native-svg';
 import { router } from 'expo-router';
 
-const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Other'];
-const ORIENTATION_OPTIONS = ['Everyone', 'Men', 'Women'];
+const { width } = Dimensions.get('window');
+const ORB_SIZE = 220;
+
+const QUESTIONS = [
+  "Hey, I'm Lyra. I'd like to ask some questions about you. Are you ready?",
+  "What's your name, age, and gender?",
+  "What do you do for fun when no one's watching?",
+  "What's something you're weirdly passionate about?",
+  "Describe your ideal Friday night.",
+  "What's a dealbreaker for you in a relationship?",
+  "What kind of humor do you vibe with?",
+  "How do you show someone you care about them?",
+  "Last one — what are you actually looking for right now?",
+];
 
 export default function OnboardingScreen() {
-  const [name, setName] = useState('');
-  const [age, setAge] = useState('');
-  const [gender, setGender] = useState('');
-  const [orientation, setOrientation] = useState('');
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [speaking, setSpeaking] = useState(false);
+  const [done, setDone] = useState(false);
 
-  const canContinue = name.trim() && age && gender && orientation;
+  // Text fade — slides in from top (translateY -20 → 0) and fades in
+  const textOpacity = useRef(new Animated.Value(0)).current;
+  const textTranslateY = useRef(new Animated.Value(-20)).current;
+
+  // Orb
+  const orbScale = useRef(new Animated.Value(1)).current;
+  const orbGlowScale = useRef(new Animated.Value(1)).current;
+  const activeAnim = useRef<Animated.CompositeAnimation | null>(null);
+
+  const startIdle = useCallback(() => {
+    activeAnim.current?.stop();
+    activeAnim.current = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(orbScale, { toValue: 1.06, duration: 3000, useNativeDriver: true }),
+          Animated.timing(orbScale, { toValue: 0.96, duration: 3000, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(orbGlowScale, { toValue: 1.12, duration: 3500, useNativeDriver: true }),
+          Animated.timing(orbGlowScale, { toValue: 0.92, duration: 3500, useNativeDriver: true }),
+        ]),
+      ]),
+    );
+    activeAnim.current.start();
+  }, [orbScale, orbGlowScale]);
+
+  const startSpeaking = useCallback(() => {
+    activeAnim.current?.stop();
+    activeAnim.current = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(orbScale, { toValue: 1.18, duration: 280, useNativeDriver: true }),
+          Animated.timing(orbScale, { toValue: 0.93, duration: 320, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(orbGlowScale, { toValue: 1.3, duration: 280, useNativeDriver: true }),
+          Animated.timing(orbGlowScale, { toValue: 1.0, duration: 320, useNativeDriver: true }),
+        ]),
+      ]),
+    );
+    activeAnim.current.start();
+  }, [orbScale, orbGlowScale]);
+
+  useEffect(() => { startIdle(); }, [startIdle]);
+
+  // Animate text in when question changes
+  const showQuestion = useCallback(() => {
+    setSpeaking(true);
+    textOpacity.setValue(0);
+    textTranslateY.setValue(-20);
+
+    Animated.parallel([
+      Animated.timing(textOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(textTranslateY, { toValue: 0, duration: 500, useNativeDriver: true }),
+    ]).start();
+
+    // Simulate speaking duration based on text length
+    const duration = Math.max(1500, QUESTIONS[questionIndex]?.length * 40 || 2000);
+    startSpeaking();
+
+    setTimeout(() => {
+      setSpeaking(false);
+      startIdle();
+    }, duration);
+  }, [questionIndex, textOpacity, textTranslateY, startSpeaking, startIdle]);
+
+  // Show first question on mount
+  useEffect(() => { showQuestion(); }, []);
+
+  const handleMicPress = () => {
+    if (speaking) return;
+
+    // Fade out current text
+    Animated.parallel([
+      Animated.timing(textOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+      Animated.timing(textTranslateY, { toValue: 20, duration: 250, useNativeDriver: true }),
+    ]).start(() => {
+      const nextIndex = questionIndex + 1;
+      setQuestionIndex(nextIndex);
+
+      if (nextIndex < QUESTIONS.length) {
+        // Show next question (fade in from top)
+        textTranslateY.setValue(-20);
+        setSpeaking(true);
+        startSpeaking();
+
+        const duration = Math.max(1500, QUESTIONS[nextIndex].length * 40);
+
+        Animated.parallel([
+          Animated.timing(textOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+          Animated.timing(textTranslateY, { toValue: 0, duration: 500, useNativeDriver: true }),
+        ]).start();
+
+        setTimeout(() => {
+          setSpeaking(false);
+          startIdle();
+        }, duration);
+      } else {
+        // Done
+        setDone(true);
+        textTranslateY.setValue(-20);
+        Animated.parallel([
+          Animated.timing(textOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+          Animated.timing(textTranslateY, { toValue: 0, duration: 500, useNativeDriver: true }),
+        ]).start();
+      }
+    });
+  };
+
+  const currentText = done
+    ? "That's everything. I've built your personality profile."
+    : QUESTIONS[questionIndex] || '';
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Text style={styles.heading}>Tell us about you</Text>
-        <Text style={styles.subheading}>This info helps Lyra find your person.</Text>
+    <View style={styles.container}>
+      {/* Title */}
+      <Text style={styles.title}>Lyra</Text>
 
-        {/* Photo placeholder */}
-        <View style={styles.photoBox}>
-          <Text style={styles.photoPlaceholder}>+ Add Photo</Text>
-        </View>
-
-        <Text style={styles.label}>First Name</Text>
-        <TextInput
-          style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder="Your name"
-          placeholderTextColor="#555"
-          autoCapitalize="words"
-        />
-
-        <Text style={styles.label}>Age</Text>
-        <TextInput
-          style={styles.input}
-          value={age}
-          onChangeText={setAge}
-          placeholder="18+"
-          placeholderTextColor="#555"
-          keyboardType="number-pad"
-          maxLength={2}
-        />
-
-        <Text style={styles.label}>Gender</Text>
-        <View style={styles.chipRow}>
-          {GENDER_OPTIONS.map((g) => (
-            <TouchableOpacity
-              key={g}
-              style={[styles.chip, gender === g && styles.chipActive]}
-              onPress={() => setGender(g)}
-            >
-              <Text style={[styles.chipText, gender === g && styles.chipTextActive]}>{g}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={styles.label}>Show me</Text>
-        <View style={styles.chipRow}>
-          {ORIENTATION_OPTIONS.map((o) => (
-            <TouchableOpacity
-              key={o}
-              style={[styles.chip, orientation === o && styles.chipActive]}
-              onPress={() => setOrientation(o)}
-            >
-              <Text style={[styles.chipText, orientation === o && styles.chipTextActive]}>{o}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.primaryButton, !canContinue && styles.buttonDisabled]}
-          onPress={() => router.replace('/(app)/interview')}
-          disabled={!canContinue}
+      {/* Orb — centered */}
+      <View style={styles.orbArea}>
+        <Animated.View
+          style={[
+            styles.orbGlow,
+            { transform: [{ scale: orbGlowScale }] },
+          ]}
         >
-          <Text style={styles.primaryButtonText}>Next</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <Svg width={ORB_SIZE * 2} height={ORB_SIZE * 2}>
+            <Defs>
+              <RadialGradient id="outerGlow" cx="50%" cy="50%" rx="50%" ry="50%">
+                <Stop offset="0%" stopColor="#FF00DD" stopOpacity="0.4" />
+                <Stop offset="35%" stopColor="#FF00DD" stopOpacity="0.15" />
+                <Stop offset="100%" stopColor="#FF00DD" stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Ellipse cx={ORB_SIZE} cy={ORB_SIZE} rx={ORB_SIZE} ry={ORB_SIZE} fill="url(#outerGlow)" />
+          </Svg>
+        </Animated.View>
+
+        <Animated.View
+          style={[
+            styles.orbCore,
+            { transform: [{ scale: orbScale }] },
+          ]}
+        >
+          <Svg width={ORB_SIZE} height={ORB_SIZE}>
+            <Defs>
+              <RadialGradient id="coreGrad" cx="50%" cy="45%" rx="50%" ry="50%">
+                <Stop offset="0%" stopColor="#FF66EE" stopOpacity="1" />
+                <Stop offset="30%" stopColor="#FF00DD" stopOpacity="0.9" />
+                <Stop offset="60%" stopColor="#CC00AA" stopOpacity="0.45" />
+                <Stop offset="100%" stopColor="#880077" stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Circle cx={ORB_SIZE / 2} cy={ORB_SIZE / 2} r={ORB_SIZE / 2} fill="url(#coreGrad)" />
+          </Svg>
+        </Animated.View>
+      </View>
+
+      {/* Text area — fixed height, current question only, faded edges */}
+      <View style={styles.textArea}>
+        <Animated.Text
+          style={[
+            styles.questionText,
+            {
+              opacity: textOpacity,
+              transform: [{ translateY: textTranslateY }],
+            },
+          ]}
+        >
+          {currentText}
+        </Animated.Text>
+
+        {/* Top fade overlay */}
+        <View style={styles.fadeTop} pointerEvents="none">
+          <Svg width={width} height={30}>
+            <Defs>
+              <SvgLinearGradient id="ft" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#000000" stopOpacity="1" />
+                <Stop offset="1" stopColor="#000000" stopOpacity="0" />
+              </SvgLinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width={width} height={30} fill="url(#ft)" />
+          </Svg>
+        </View>
+
+        {/* Bottom fade overlay */}
+        <View style={styles.fadeBottom} pointerEvents="none">
+          <Svg width={width} height={30}>
+            <Defs>
+              <SvgLinearGradient id="fb" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#000000" stopOpacity="0" />
+                <Stop offset="1" stopColor="#000000" stopOpacity="1" />
+              </SvgLinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width={width} height={30} fill="url(#fb)" />
+          </Svg>
+        </View>
+      </View>
+
+      {/* Bottom — mic or continue */}
+      <View style={styles.bottomArea}>
+        {done ? (
+          <TouchableOpacity
+            style={styles.continueButton}
+            onPress={() => router.push('/(auth)/login')}
+          >
+            <Text style={styles.continueText}>Continue</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.micButton, speaking && styles.micSpeaking]}
+            onPress={handleMicPress}
+            disabled={speaking}
+            activeOpacity={0.7}
+          >
+            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M12 1C10.34 1 9 2.34 9 4V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V4C15 2.34 13.66 1 12 1Z"
+                fill="#FFFFFF"
+              />
+              <Path
+                d="M17 12C17 14.76 14.76 17 12 17C9.24 17 7 14.76 7 12H5C5 15.53 7.61 18.43 11 18.92V22H13V18.92C16.39 18.43 19 15.53 19 12H17Z"
+                fill="#FFFFFF"
+              />
+            </Svg>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0A0F' },
-  scrollContent: { paddingTop: 80, paddingBottom: 40, paddingHorizontal: 24 },
-  heading: { color: '#FFFFFF', fontSize: 32, fontWeight: '800' },
-  subheading: { color: '#777788', fontSize: 16, marginTop: 8, marginBottom: 28 },
-  photoBox: {
-    width: 120, height: 160, borderRadius: 16, backgroundColor: '#1A1A2E',
-    justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 28,
+  container: {
+    flex: 1,
+    backgroundColor: '#000000',
+    alignItems: 'center',
   },
-  photoPlaceholder: { color: '#8B5CF6', fontSize: 16, fontWeight: '600' },
-  label: { color: '#AAAABB', fontSize: 14, fontWeight: '600', marginBottom: 8, marginTop: 16 },
-  input: {
-    backgroundColor: '#1A1A2E', color: '#FFFFFF', borderRadius: 12,
-    paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
+  title: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+    marginTop: 70,
   },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    backgroundColor: '#1A1A2E', borderRadius: 20, paddingHorizontal: 18,
-    paddingVertical: 10, borderWidth: 1.5, borderColor: 'transparent',
+
+  // Orb — takes up the center of the screen
+  orbArea: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  chipActive: { borderColor: '#8B5CF6', backgroundColor: '#1E1040' },
-  chipText: { color: '#999', fontSize: 15, fontWeight: '500' },
-  chipTextActive: { color: '#8B5CF6' },
-  primaryButton: {
-    backgroundColor: '#8B5CF6', borderRadius: 16, paddingVertical: 16,
-    alignItems: 'center', marginTop: 32,
+  orbGlow: {
+    position: 'absolute',
+    width: ORB_SIZE * 2,
+    height: ORB_SIZE * 2,
   },
-  primaryButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
-  buttonDisabled: { opacity: 0.4 },
+  orbCore: {
+    position: 'absolute',
+    width: ORB_SIZE,
+    height: ORB_SIZE,
+  },
+
+  // Text — fixed height below orb
+  textArea: {
+    height: 90,
+    width: width,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  questionText: {
+    color: '#AAAAAA',
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    paddingHorizontal: 44,
+  },
+  fadeTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 30,
+  },
+  fadeBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 30,
+  },
+
+  // Bottom
+  bottomArea: {
+    paddingBottom: 60,
+    alignItems: 'center',
+  },
+  micButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#111111',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  micSpeaking: {
+    opacity: 0.3,
+  },
+  continueButton: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 48,
+    paddingVertical: 16,
+    borderRadius: 44,
+  },
+  continueText: {
+    color: '#000000',
+    fontSize: 18,
+    fontWeight: '600',
+  },
 });

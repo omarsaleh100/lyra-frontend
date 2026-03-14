@@ -5,41 +5,42 @@ Proximity-based dating app. No swiping — an AI interviews users to build perso
 ## User Flow
 
 ```
-Onboarding (AI Interview) → Login → Home → Match Profile → Proximity Radar
+Onboarding (AI Interview) → Login → Profile Setup → Home → Match Profile → Proximity Radar
 ```
 
-1. **Onboarding** — App opens straight to a chat-style AI interview. 8 questions total:
-   - Q1: Name, age, gender, orientation (profile basics)
-   - Q2–Q8: Personality questions (values, interests, lifestyle, humor, love language, etc.)
-2. **Login** — Apple Sign-In to create account after completing the interview
-3. **Home** — Pulse animation, waiting for a nearby compatible match
-4. **Match Profile** — When a match is found nearby, their profile card is revealed (approve or pass)
-5. **Proximity Radar** — Live GPS radar with distance countdown, walk toward each other, celebration at arrival
+1. **Onboarding** — Animated glowing orb (Lyra) asks 8 personality questions via voice-style UI. Text fades in/out like a teleprompter. Mic button to advance.
+2. **Login** — "Personality Saved." → Continue with Apple
+3. **Profile Setup** — Photo slots (4 vertical rectangles), name, age, gender, "Want to meet" preferences
+4. **Home** — Blue breathing orb, "Looking for someone compatible near you". Tap 5x anywhere for demo mode.
+5. **Match Profile** — Circular photo, bio, Lyra's match reasoning. Pink/gray edge gradients that glow on button hold. "Let's not" / "Let's meet!"
+6. **Proximity Radar** — Compass arrow pointing to match, color shifts (green → amber → pink), pulsing distance text, confetti + haptics on arrival
 
 ## Screens
 
 | Screen | Route | Description |
 |--------|-------|-------------|
-| Onboarding | `/(app)/onboarding` | 8-question AI interview chat UI (entry point) |
-| Login | `/(auth)/login` | Apple Sign-In |
-| Home | `/(app)/home` | Pulse animation, waiting for nearby matches |
-| Match Profile | `/(app)/match/[id]` | Profile card reveal, approve/pass |
-| Proximity Radar | `/(app)/radar/[id]` | Live distance countdown with SVG radar |
+| Onboarding | `/(app)/onboarding` | 8-question AI interview with animated orb (entry point) |
+| Login | `/(auth)/login` | "Personality Saved." + Apple Sign-In |
+| Profile Setup | `/(app)/signup` | Photos, name, age, gender, orientation |
+| Home | `/(app)/home` | Blue orb waiting screen + 5-tap demo trigger |
+| Match Profile | `/(app)/match/[id]` | Profile reveal with interactive edge gradients |
+| Proximity Radar | `/(app)/radar/[id]` | Compass radar, distance countdown, confetti celebration |
 
 ## Demo Mode
 
-From the home screen, **tap the "Lyra" logo 5 times** to trigger demo mode:
-1. After 3 seconds, a mock match appears (Alex's profile)
-2. Tap "Let's meet" to open the radar
-3. Distance counts down from 100m to 0m over 20 seconds
-4. Celebration overlay at < 5m
+From the home screen, **tap anywhere 5 times** to trigger demo mode:
+1. After 3 seconds, Sam's profile appears
+2. Hold "Let's meet!" (pink glow) or "Let's not" (gray glow)
+3. Radar screen: compass arrow + distance counts down 88m → 0m over 25 seconds
+4. At < 3m: confetti burst from bottom + haptic vibration
 
 ## Tech Stack
 
 - Expo SDK 55 + TypeScript
 - expo-router v5 (file-based routing)
-- React Native SVG for radar visualization
-- React Native built-in Animated API
+- React Native SVG (radar, orb gradients, compass arrow, edge gradients)
+- React Native Animated API (orb breathing, confetti particles, text transitions)
+- expo-haptics (celebration vibration)
 
 ## Getting Started
 
@@ -57,13 +58,14 @@ app/
 ├── index.tsx                # Entry → redirects to onboarding
 ├── (auth)/
 │   ├── _layout.tsx
-│   └── login.tsx            # Apple Sign-In
+│   └── login.tsx            # "Personality Saved." + Apple Sign-In
 ├── (app)/
 │   ├── _layout.tsx
-│   ├── onboarding.tsx       # 8-question AI interview (app entry point)
-│   ├── home.tsx             # Pulse waiting screen + demo trigger
-│   ├── match/[id].tsx       # Match profile card
-│   └── radar/[id].tsx       # Proximity radar
+│   ├── onboarding.tsx       # Orb + teleprompter interview
+│   ├── signup.tsx           # Profile setup (photos, name, age, gender)
+│   ├── home.tsx             # Blue orb waiting screen
+│   ├── match/[id].tsx       # Match profile with edge gradients
+│   └── radar/[id].tsx       # Compass radar + confetti celebration
 ```
 
 ## Backend Integration (TODO)

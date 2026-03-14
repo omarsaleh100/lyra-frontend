@@ -1,135 +1,286 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Dimensions, Animated } from 'react-native';
-import Svg, { Circle, Line } from 'react-native-svg';
+import Svg, {
+  Defs,
+  RadialGradient,
+  Stop,
+  Circle,
+  Polygon,
+  Line,
+} from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 
-const { width } = Dimensions.get('window');
-const SIZE = width - 64;
-const CENTER = SIZE / 2;
-const MAX_RADIUS = SIZE / 2 - 8;
+const { width, height } = Dimensions.get('window');
+const RADAR_SIZE = width - 80;
+const CENTER = RADAR_SIZE / 2;
+const MAX_R = RADAR_SIZE / 2 - 12;
+
+const GREEN = '#22C55E';
+const CONFETTI_COLORS = ['#FF00DD', '#22C55E', '#F59E0B', '#4466FF', '#FFFFFF', '#FF4D8D'];
+const CONFETTI_COUNT = 60;
+
+// Lightweight confetti particle component
+function ConfettiParticle({ delay, color, startX }: { delay: number; color: string; startX: number }) {
+  const translateY = useRef(new Animated.Value(0)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
+
+  const drift = useMemo(() => (Math.random() - 0.5) * 160, []);
+  const duration = useMemo(() => 2000 + Math.random() * 1500, []);
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(delay),
+      Animated.parallel([
+        Animated.timing(translateY, { toValue: -(height + 100), duration, useNativeDriver: true }),
+        Animated.timing(translateX, { toValue: drift, duration, useNativeDriver: true }),
+        Animated.sequence([
+          Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+          Animated.delay(duration - 700),
+          Animated.timing(opacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+        ]),
+        Animated.timing(rotate, { toValue: 1, duration, useNativeDriver: true }),
+      ]),
+    ]).start();
+  }, [delay, drift, duration, translateY, translateX, opacity, rotate]);
+
+  const spin = rotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${360 + Math.random() * 720}deg`] });
+  const w = 6 + Math.random() * 6;
+  const h = w * (1 + Math.random() * 2);
+
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        bottom: -20,
+        left: startX,
+        width: w,
+        height: h,
+        borderRadius: 2,
+        backgroundColor: color,
+        opacity,
+        transform: [{ translateY }, { translateX }, { rotate: spin }],
+      }}
+    />
+  );
+}
+
+function ConfettiOverlay() {
+  const particles = useMemo(() =>
+    Array.from({ length: CONFETTI_COUNT }, (_, i) => ({
+      id: i,
+      delay: Math.random() * 600,
+      color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+      startX: Math.random() * width,
+    })),
+  []);
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {particles.map((p) => (
+        <ConfettiParticle key={p.id} delay={p.delay} color={p.color} startX={p.startX} />
+      ))}
+    </View>
+  );
+}
 
 export default function RadarScreen() {
-  const [distance, setDistance] = useState(100);
+  const [distance, setDistance] = useState(88);
+  const [bearing, setBearing] = useState(0); // degrees, 0 = up
   const [celebration, setCelebration] = useState(false);
   const startTime = useRef(Date.now());
 
-  // Sweep line rotation
-  const rotation = useRef(new Animated.Value(0)).current;
+  // Pulse ring animation
+  const pulseScale = useRef(new Animated.Value(0.2)).current;
+  const pulseOpacity = useRef(new Animated.Value(0.6)).current;
+
+  // Arrow glow
+  const arrowGlow = useRef(new Animated.Value(0.5)).current;
+
+  // Celebration
+  const celebScale = useRef(new Animated.Value(0)).current;
+  const celebOpacity = useRef(new Animated.Value(0)).current;
+
+  // Pulse ring loop
   useEffect(() => {
     Animated.loop(
-      Animated.timing(rotation, {
-        toValue: 1,
-        duration: 2000,
-        useNativeDriver: true,
-      }),
+      Animated.parallel([
+        Animated.timing(pulseScale, { toValue: 1, duration: 2000, useNativeDriver: true }),
+        Animated.timing(pulseOpacity, { toValue: 0, duration: 2000, useNativeDriver: true }),
+      ]),
     ).start();
-  }, [rotation]);
+  }, [pulseScale, pulseOpacity]);
 
-  // Celebration scale animation
-  const celebScale = useRef(new Animated.Value(0)).current;
+  // Arrow glow loop — throbs faster as distance decreases
+  useEffect(() => {
+    const duration = distance > 40 ? 1200 : distance > 15 ? 600 : 300;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(arrowGlow, { toValue: 1, duration: duration / 2, useNativeDriver: true }),
+        Animated.timing(arrowGlow, { toValue: 0.4, duration: duration / 2, useNativeDriver: true }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [distance, arrowGlow]);
 
-  // Simulate distance decreasing over 20 seconds
+  // Simulate distance decreasing + bearing wandering
   useEffect(() => {
     const interval = setInterval(() => {
       const elapsed = Date.now() - startTime.current;
-      const progress = Math.min(elapsed / 20000, 1);
-      const newDist = 100 * (1 - progress);
+      const progress = Math.min(elapsed / 25000, 1);
+      const newDist = 88 * (1 - progress);
       setDistance(Math.max(0, newDist));
 
-      if (newDist < 5 && !celebration) {
+      // Bearing wanders slightly to feel alive
+      setBearing((prev) => {
+        const drift = (Math.random() - 0.5) * 8;
+        return (prev + drift + 360) % 360;
+      });
+
+      if (newDist < 3 && !celebration) {
         setCelebration(true);
         clearInterval(interval);
-        Animated.spring(celebScale, {
-          toValue: 1,
-          useNativeDriver: true,
-        }).start();
+
+        // Haptic burst
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 200);
+        setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 400);
+
+        Animated.parallel([
+          Animated.spring(celebScale, { toValue: 1, useNativeDriver: true }),
+          Animated.timing(celebOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        ]).start();
       }
     }, 200);
 
     return () => clearInterval(interval);
-  }, [celebration, celebScale]);
+  }, [celebration, celebScale, celebOpacity]);
 
-  // Color based on distance
-  const getColor = () => {
-    if (distance > 50) return '#22C55E';
-    if (distance > 20) return '#F59E0B';
-    return '#EC4899';
-  };
+  const dotDist = (distance / 100) * MAX_R * 0.75;
+  const bearingRad = (bearing * Math.PI) / 180;
+  const dotX = CENTER + Math.sin(bearingRad) * dotDist;
+  const dotY = CENTER - Math.cos(bearingRad) * dotDist;
 
-  const color = getColor();
-  const dotOffset = (distance / 100) * MAX_RADIUS * 0.8;
+  // Arrow points — triangle pointing at bearing direction
+  const arrowLen = 50;
+  const arrowWidth = 18;
+  const arrowDist = 55; // distance from center
+  const ax = CENTER + Math.sin(bearingRad) * arrowDist;
+  const ay = CENTER - Math.cos(bearingRad) * arrowDist;
+  // Tip
+  const tipX = ax + Math.sin(bearingRad) * arrowLen;
+  const tipY = ay - Math.cos(bearingRad) * arrowLen;
+  // Left base
+  const leftRad = bearingRad - Math.PI / 2;
+  const lx = ax + Math.sin(leftRad) * arrowWidth / 2;
+  const ly = ay - Math.cos(leftRad) * arrowWidth / 2;
+  // Right base
+  const rx = ax - Math.sin(leftRad) * arrowWidth / 2;
+  const ry = ay + Math.cos(leftRad) * arrowWidth / 2;
 
-  // Grid rings
-  const rings = [0.25, 0.5, 0.75, 1].map((s) => (
-    <Circle
-      key={s}
-      cx={CENTER}
-      cy={CENTER}
-      r={MAX_RADIUS * s}
-      stroke={color}
-      strokeOpacity={0.15}
-      strokeWidth={1}
-      fill="none"
-    />
-  ));
+  const distText = distance < 1 ? '< 1m' : `${Math.round(distance)}m`;
+
+  // Color shifts closer
+  const color = distance > 40 ? GREEN : distance > 15 ? '#F59E0B' : '#FF00DD';
 
   return (
     <View style={styles.container}>
-      {/* Celebration overlay */}
+      {/* Celebration */}
       {celebration && (
-        <Animated.View
-          style={[
-            styles.celebrationOverlay,
-            { transform: [{ scale: celebScale }] },
-          ]}
-        >
-          <Text style={styles.celebEmoji}>✨</Text>
-          <Text style={styles.celebTitle}>You Found Each Other!</Text>
-          <Text style={styles.celebSub}>Say hi to Alex!</Text>
-        </Animated.View>
+        <>
+          <Animated.View
+            style={[styles.celebOverlay, { opacity: celebOpacity, transform: [{ scale: celebScale }] }]}
+          >
+            <Text style={styles.celebEmoji}>✨</Text>
+            <Text style={styles.celebTitle}>You Found Each Other!</Text>
+            <Text style={styles.celebSub}>Say hi to Sam!</Text>
+          </Animated.View>
+          <ConfettiOverlay />
+        </>
       )}
 
-      <View style={styles.header}>
-        <Text style={styles.headerText}>Walking to Alex</Text>
-      </View>
+      {/* Header */}
+      <Text style={styles.headerText}>Walking to Sam</Text>
 
       {/* Radar */}
-      <View style={styles.radarContainer}>
-        <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-          {rings}
+      <View style={styles.radarOuter}>
+        {/* Pulse ring */}
+        <Animated.View
+          style={[
+            styles.pulseRing,
+            {
+              transform: [{ scale: pulseScale }],
+              opacity: pulseOpacity,
+              borderColor: color,
+            },
+          ]}
+        />
+
+        <Svg width={RADAR_SIZE} height={RADAR_SIZE} viewBox={`0 0 ${RADAR_SIZE} ${RADAR_SIZE}`}>
+          {/* Grid rings */}
+          {[0.25, 0.5, 0.75, 1.0].map((s) => (
+            <Circle
+              key={s}
+              cx={CENTER}
+              cy={CENTER}
+              r={MAX_R * s}
+              stroke={color}
+              strokeOpacity={0.12}
+              strokeWidth={1}
+              fill="none"
+            />
+          ))}
 
           {/* Crosshairs */}
-          <Line x1={CENTER} y1={8} x2={CENTER} y2={SIZE - 8} stroke={color} strokeOpacity={0.1} strokeWidth={1} />
-          <Line x1={8} y1={CENTER} x2={SIZE - 8} y2={CENTER} stroke={color} strokeOpacity={0.1} strokeWidth={1} />
+          <Line x1={CENTER} y1={12} x2={CENTER} y2={RADAR_SIZE - 12} stroke={color} strokeOpacity={0.06} strokeWidth={1} />
+          <Line x1={12} y1={CENTER} x2={RADAR_SIZE - 12} y2={CENTER} stroke={color} strokeOpacity={0.06} strokeWidth={1} />
+
+          {/* Center glow */}
+          <Defs>
+            <RadialGradient id="centerGlow" cx="50%" cy="50%" rx="15%" ry="15%">
+              <Stop offset="0%" stopColor={color} stopOpacity="0.3" />
+              <Stop offset="100%" stopColor={color} stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Circle cx={CENTER} cy={CENTER} r={MAX_R * 0.15} fill="url(#centerGlow)" />
 
           {/* Center dot (you) */}
-          <Circle cx={CENTER} cy={CENTER} r={6} fill={color} />
+          <Circle cx={CENTER} cy={CENTER} r={5} fill={color} />
 
-          {/* Target dot (match) */}
-          <Circle
-            cx={CENTER}
-            cy={CENTER - dotOffset}
-            r={8}
-            fill="#EC4899"
-            stroke="#FFFFFF"
-            strokeWidth={2}
-          />
+          {/* Direction arrow — compass pointing to match */}
+          {distance > 3 && (
+            <Polygon
+              points={`${tipX},${tipY} ${lx},${ly} ${rx},${ry}`}
+              fill={color}
+              opacity={0.9}
+            />
+          )}
+
+          {/* Target dot */}
+          {distance > 3 && (
+            <>
+              <Circle cx={dotX} cy={dotY} r={10} fill={color} fillOpacity={0.15} />
+              <Circle cx={dotX} cy={dotY} r={5} fill={color} />
+            </>
+          )}
         </Svg>
       </View>
 
-      {/* Distance readout */}
-      <View style={styles.distanceBox}>
-        <Text style={[styles.distanceNumber, { color }]}>
-          {distance < 1 ? '< 1' : Math.round(distance).toString()}
-        </Text>
-        <Text style={styles.distanceUnit}>meters away</Text>
-      </View>
+      {/* Distance */}
+      <Animated.Text style={[styles.distance, { color, opacity: arrowGlow }]}>
+        {distText}
+      </Animated.Text>
 
-      <Text style={styles.tip}>
-        {distance > 50
-          ? 'Start walking toward the dot on the radar'
+      {/* Hint */}
+      <Text style={[styles.hint, { color }]}>
+        {distance > 40
+          ? 'Follow the arrow'
           : distance > 10
-            ? 'Getting closer! Keep going...'
-            : "You're almost there! Look around..."}
+            ? 'Getting closer...'
+            : "Look around! you're almost there"}
       </Text>
     </View>
   );
@@ -138,42 +289,49 @@ export default function RadarScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0F',
-    justifyContent: 'center',
+    backgroundColor: '#000000',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    justifyContent: 'center',
   },
-  header: {
+  headerText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
     position: 'absolute',
     top: 70,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
   },
-  headerText: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
-  radarContainer: { alignItems: 'center', justifyContent: 'center' },
-  distanceBox: { alignItems: 'center', marginTop: 32 },
-  distanceNumber: {
-    fontSize: 72,
+  radarOuter: {
+    width: RADAR_SIZE,
+    height: RADAR_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: RADAR_SIZE * 0.8,
+    height: RADAR_SIZE * 0.8,
+    borderRadius: RADAR_SIZE * 0.4,
+    borderWidth: 2,
+  },
+  distance: {
+    fontSize: 60,
     fontWeight: '800',
+    marginTop: 24,
     fontVariant: ['tabular-nums'],
   },
-  distanceUnit: { color: '#777788', fontSize: 16, marginTop: -4 },
-  tip: {
-    color: '#555566',
+  hint: {
     fontSize: 14,
-    textAlign: 'center',
-    marginTop: 24,
-    lineHeight: 20,
+    marginTop: 12,
+    opacity: 0.6,
   },
-  celebrationOverlay: {
+  celebOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10, 10, 15, 0.9)',
+    backgroundColor: 'rgba(0, 0, 0, 0.94)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 100,
   },
   celebEmoji: { fontSize: 64, marginBottom: 16 },
   celebTitle: { color: '#FFFFFF', fontSize: 32, fontWeight: '800', textAlign: 'center' },
-  celebSub: { color: '#D0D0E0', fontSize: 18, marginTop: 8 },
+  celebSub: { color: '#888888', fontSize: 18, marginTop: 8 },
 });

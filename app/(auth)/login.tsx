@@ -5,25 +5,17 @@ import { router } from 'expo-router';
 export default function LoginScreen() {
   return (
     <View style={styles.container}>
-      <View style={styles.hero}>
-        <Text style={styles.logo}>Lyra</Text>
-        <Text style={styles.tagline}>Meet the person, not the profile.</Text>
-        <Text style={styles.subtitle}>
-          AI-powered compatibility. Proximity-based meetings. No swiping.
-        </Text>
+      <View style={styles.content}>
+        <Text style={styles.saved}>Personality Saved.</Text>
       </View>
 
       <View style={styles.bottom}>
         <TouchableOpacity
           style={styles.appleButton}
-          onPress={() => router.replace('/(app)/home')}
+          onPress={() => router.replace('/(app)/signup')}
         >
-          <Text style={styles.appleButtonText}>Sign in with Apple</Text>
+          <Text style={styles.appleButtonText}> Continue with Apple</Text>
         </TouchableOpacity>
-
-        <Text style={styles.terms}>
-          By continuing, you agree to our Terms of Service and Privacy Policy.
-        </Text>
       </View>
     </View>
   );
@@ -32,24 +24,33 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0F',
+    backgroundColor: '#000000',
     justifyContent: 'space-between',
-    paddingTop: 120,
-    paddingBottom: 60,
   },
-  hero: { alignItems: 'center', paddingHorizontal: 32 },
-  logo: { color: '#FFFFFF', fontSize: 56, fontWeight: '800', letterSpacing: -1 },
-  tagline: { color: '#8B5CF6', fontSize: 18, fontWeight: '600', marginTop: 12, textAlign: 'center' },
-  subtitle: { color: '#777788', fontSize: 15, marginTop: 12, textAlign: 'center', lineHeight: 22 },
-  bottom: { alignItems: 'center', paddingHorizontal: 32 },
-  appleButton: {
-    width: '100%',
-    height: 56,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+  content: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  appleButtonText: { color: '#000000', fontSize: 18, fontWeight: '600' },
-  terms: { color: '#555566', fontSize: 12, textAlign: 'center', marginTop: 20, lineHeight: 18 },
+  saved: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  bottom: {
+    paddingHorizontal: 24,
+    paddingBottom: 50,
+  },
+  appleButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 44,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  appleButtonText: {
+    color: '#000000',
+    fontSize: 18,
+    fontWeight: '600',
+  },
 });

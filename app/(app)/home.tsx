@@ -1,72 +1,43 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   Animated,
   TouchableWithoutFeedback,
+  Dimensions,
 } from 'react-native';
+import Svg, { Defs, RadialGradient, Stop, Circle, Ellipse } from 'react-native-svg';
 import { router } from 'expo-router';
 
 const { width } = Dimensions.get('window');
-
-const DEMO_MATCH = {
-  id: 'demo-match-1',
-  name: 'Alex',
-  age: 26,
-  bio: 'Coffee addict, trail runner, aspiring novelist.',
-  personality:
-    'Warm and intellectually curious. Loves deep conversations about philosophy and art. Introverted but lights up around people she trusts.',
-};
+const ORB_SIZE = 220;
 
 export default function HomeScreen() {
   const [demoActive, setDemoActive] = useState(false);
   const tapCount = useRef(0);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Pulse animations using built-in Animated
-  const pulse1 = useRef(new Animated.Value(0)).current;
-  const pulse2 = useRef(new Animated.Value(0)).current;
-  const pulse3 = useRef(new Animated.Value(0)).current;
+  // Orb breathing
+  const orbScale = useRef(new Animated.Value(1)).current;
+  const orbGlowScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    const createPulse = (anim: Animated.Value, delay: number) => {
-      const loop = Animated.loop(
-        Animated.timing(anim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-          delay,
-        }),
-      );
-      loop.start();
-      return loop;
-    };
+    Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(orbScale, { toValue: 1.06, duration: 3000, useNativeDriver: true }),
+          Animated.timing(orbScale, { toValue: 0.96, duration: 3000, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(orbGlowScale, { toValue: 1.12, duration: 3500, useNativeDriver: true }),
+          Animated.timing(orbGlowScale, { toValue: 0.92, duration: 3500, useNativeDriver: true }),
+        ]),
+      ]),
+    ).start();
+  }, [orbScale, orbGlowScale]);
 
-    const l1 = createPulse(pulse1, 0);
-    const l2 = createPulse(pulse2, 666);
-    const l3 = createPulse(pulse3, 1333);
-
-    return () => { l1.stop(); l2.stop(); l3.stop(); };
-  }, [pulse1, pulse2, pulse3]);
-
-  const makePulseStyle = (anim: Animated.Value) => ({
-    transform: [
-      {
-        scale: anim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.3, 3],
-        }),
-      },
-    ],
-    opacity: anim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.8, 0],
-    }),
-  });
-
-  const handleLogoTap = () => {
+  const handleTap = () => {
     tapCount.current += 1;
     if (tapTimer.current) clearTimeout(tapTimer.current);
     tapTimer.current = setTimeout(() => { tapCount.current = 0; }, 2000);
@@ -74,90 +45,101 @@ export default function HomeScreen() {
     if (tapCount.current >= 5) {
       tapCount.current = 0;
       setDemoActive(true);
-
-      // Fire demo match after 3 seconds
       setTimeout(() => {
-        router.push(`/(app)/match/${DEMO_MATCH.id}`);
+        router.push('/(app)/match/demo-match-1');
       }, 3000);
     }
   };
 
   return (
-    <View style={styles.container}>
-      {/* Pulse rings */}
-      <View style={styles.pulseContainer}>
-        <Animated.View style={[styles.pulseRing, makePulseStyle(pulse1)]} />
-        <Animated.View style={[styles.pulseRing, makePulseStyle(pulse2)]} />
-        <Animated.View style={[styles.pulseRing, makePulseStyle(pulse3)]} />
-        <View style={styles.centerDot} />
+    <TouchableWithoutFeedback onPress={handleTap}>
+      <View style={styles.container}>
+        {/* Blue orb — same structure as onboarding but blue */}
+        <View style={styles.orbWrapper}>
+          <Animated.View
+            style={[
+              styles.orbGlow,
+              { transform: [{ scale: orbGlowScale }] },
+            ]}
+          >
+            <Svg width={ORB_SIZE * 2} height={ORB_SIZE * 2}>
+              <Defs>
+                <RadialGradient id="blueOuterGlow" cx="50%" cy="50%" rx="50%" ry="50%">
+                  <Stop offset="0%" stopColor="#0033FF" stopOpacity="0.35" />
+                  <Stop offset="40%" stopColor="#0033FF" stopOpacity="0.12" />
+                  <Stop offset="100%" stopColor="#0033FF" stopOpacity="0" />
+                </RadialGradient>
+              </Defs>
+              <Ellipse cx={ORB_SIZE} cy={ORB_SIZE} rx={ORB_SIZE} ry={ORB_SIZE} fill="url(#blueOuterGlow)" />
+            </Svg>
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.orbCore,
+              { transform: [{ scale: orbScale }] },
+            ]}
+          >
+            <Svg width={ORB_SIZE} height={ORB_SIZE}>
+              <Defs>
+                <RadialGradient id="blueCoreGrad" cx="50%" cy="45%" rx="50%" ry="50%">
+                  <Stop offset="0%" stopColor="#4466FF" stopOpacity="1" />
+                  <Stop offset="30%" stopColor="#0033FF" stopOpacity="0.9" />
+                  <Stop offset="60%" stopColor="#0022AA" stopOpacity="0.45" />
+                  <Stop offset="100%" stopColor="#000000" stopOpacity="0" />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={ORB_SIZE / 2} cy={ORB_SIZE / 2} r={ORB_SIZE / 2} fill="url(#blueCoreGrad)" />
+            </Svg>
+          </Animated.View>
+        </View>
+
+        {/* Status text below orb */}
+        <Text style={styles.searchText}>
+          {demoActive ? 'Match incoming...' : 'Looking for someone compatible near you'}
+        </Text>
+
+        <Text style={styles.hint}>Tap 5x for demo</Text>
       </View>
-
-      {/* Logo — 5-tap to trigger demo */}
-      <TouchableWithoutFeedback onPress={handleLogoTap}>
-        <Text style={styles.logo}>Lyra</Text>
-      </TouchableWithoutFeedback>
-
-      <Text style={styles.statusText}>
-        {demoActive
-          ? 'Match incoming...'
-          : 'Looking for someone compatible near you...'}
-      </Text>
-
-      <Text style={styles.hint}>
-        {demoActive
-          ? ''
-          : 'Tap the logo 5 times for demo mode'}
-      </Text>
-    </View>
+    </TouchableWithoutFeedback>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0F',
+    backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32,
   },
-  logo: {
-    color: '#FFFFFF',
-    fontSize: 42,
-    fontWeight: '800',
-    letterSpacing: -1,
-    marginBottom: 16,
-  },
-  pulseContainer: {
-    width: width * 0.6,
-    height: width * 0.6,
-    justifyContent: 'center',
+  orbWrapper: {
+    width: ORB_SIZE * 2,
+    height: ORB_SIZE * 2,
     alignItems: 'center',
-    marginBottom: 40,
+    justifyContent: 'center',
+    marginBottom: -20,
   },
-  pulseRing: {
+  orbGlow: {
     position: 'absolute',
-    width: width * 0.2,
-    height: width * 0.2,
-    borderRadius: width * 0.1,
-    borderWidth: 2,
-    borderColor: '#8B5CF6',
+    width: ORB_SIZE * 2,
+    height: ORB_SIZE * 2,
   },
-  centerDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#8B5CF6',
+  orbCore: {
+    position: 'absolute',
+    width: ORB_SIZE,
+    height: ORB_SIZE,
   },
-  statusText: {
-    color: '#CCCCDD',
-    fontSize: 16,
+  searchText: {
+    color: '#666666',
+    fontSize: 15,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
+    paddingHorizontal: 40,
   },
   hint: {
-    color: '#555566',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 12,
+    position: 'absolute',
+    bottom: 50,
+    color: '#222222',
+    fontSize: 12,
   },
 });
