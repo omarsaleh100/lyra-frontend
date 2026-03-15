@@ -14,6 +14,13 @@ import { useLocalSearchParams } from 'expo-router';
 import { joinRadarChannel, haversineDistance } from '../../../lib/radar';
 import { useSmoothedDistance } from '../../../hooks/useSmoothedDistance';
 import { supabase } from '../../../lib/supabase';
+import {
+  startAdvertise,
+  stopAdvertise,
+  startDiscovery,
+  stopDiscovery,
+  onPeerFound,
+} from 'expo-nearby-connections';
 
 const { width, height } = Dimensions.get('window');
 const RADAR_SIZE = width - 80;
@@ -203,6 +210,30 @@ export default function RadarScreen() {
     return () => {
       clearInterval(locationInterval);
       radar.leave();
+    };
+  }, [id]);
+
+  // Nearby Connections — detect when phones are in Bluetooth/WiFi range (~30m)
+  useEffect(() => {
+    if (isDemoId(id || '') || celebrationRef.current) return;
+
+    const serviceName = `lyra-${id}`;
+
+    // Both phones advertise AND discover with the same service name
+    startAdvertise(serviceName).catch(() => {});
+    startDiscovery(serviceName).catch(() => {});
+
+    // When the other phone is found nearby, trigger celebration
+    const sub = onPeerFound(() => {
+      if (!celebrationRef.current) {
+        triggerCelebration();
+      }
+    });
+
+    return () => {
+      stopAdvertise().catch(() => {});
+      stopDiscovery().catch(() => {});
+      sub.remove();
     };
   }, [id]);
 

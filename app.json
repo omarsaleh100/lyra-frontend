@@ -42,6 +42,13 @@
         {
           "photosPermission": "Lyra needs access to your photos so you can add pictures to your profile."
         }
+      ],
+      [
+        "expo-nearby-connections",
+        {
+          "bonjourServicesName": "lyra",
+          "localNetworkUsagePermissionText": "Lyra uses local networking to detect when your match is nearby"
+        }
       ]
     ],
     "experiments": {
