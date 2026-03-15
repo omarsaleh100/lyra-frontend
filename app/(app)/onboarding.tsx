@@ -217,48 +217,6 @@ export default function OnboardingScreen() {
     activeAnim.current.start();
   }, [orbScale, orbGlowScale]);
 
-  // Listening rings — 3 concentric expanding circles
-  const ring1Scale = useRef(new Animated.Value(0)).current;
-  const ring1Opacity = useRef(new Animated.Value(0)).current;
-  const ring2Scale = useRef(new Animated.Value(0)).current;
-  const ring2Opacity = useRef(new Animated.Value(0)).current;
-  const ring3Scale = useRef(new Animated.Value(0)).current;
-  const ring3Opacity = useRef(new Animated.Value(0)).current;
-  const ringAnim = useRef<Animated.CompositeAnimation | null>(null);
-
-  const startRings = useCallback(() => {
-    const createRing = (scale: Animated.Value, opacity: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.parallel([
-            Animated.timing(scale, { toValue: 1.8, duration: 1500, useNativeDriver: true }),
-            Animated.timing(opacity, { toValue: 0, duration: 1500, useNativeDriver: true }),
-          ]),
-          Animated.parallel([
-            Animated.timing(scale, { toValue: 0.8, duration: 0, useNativeDriver: true }),
-            Animated.timing(opacity, { toValue: 0.5, duration: 0, useNativeDriver: true }),
-          ]),
-        ]),
-      );
-    ringAnim.current = Animated.parallel([
-      createRing(ring1Scale, ring1Opacity, 0),
-      createRing(ring2Scale, ring2Opacity, 500),
-      createRing(ring3Scale, ring3Opacity, 1000),
-    ]);
-    // Set initial state
-    ring1Scale.setValue(0.8); ring1Opacity.setValue(0.5);
-    ring2Scale.setValue(0.8); ring2Opacity.setValue(0.5);
-    ring3Scale.setValue(0.8); ring3Opacity.setValue(0.5);
-    ringAnim.current.start();
-  }, [ring1Scale, ring1Opacity, ring2Scale, ring2Opacity, ring3Scale, ring3Opacity]);
-
-  const stopRings = useCallback(() => {
-    ringAnim.current?.stop();
-    ring1Opacity.setValue(0);
-    ring2Opacity.setValue(0);
-    ring3Opacity.setValue(0);
-  }, [ring1Opacity, ring2Opacity, ring3Opacity]);
 
   useEffect(() => { startIdle(); }, [startIdle]);
 
@@ -360,20 +318,20 @@ export default function OnboardingScreen() {
   useSpeechRecognitionEvent('start', () => {
     setListening(true);
     startListeningAnim();
-    startRings();
   });
 
   useSpeechRecognitionEvent('result', (e) => {
     const text = e.results?.[0]?.transcript;
     if (text) {
-      finalTranscriptRef.current += (finalTranscriptRef.current ? ' ' : '') + text;
-      setTranscript(finalTranscriptRef.current);
+      finalTranscriptRef.current = text;
+      setTranscript(text);
     }
   });
 
   useSpeechRecognitionEvent('end', () => {
     setListening(false);
-    stopRings();
+    // Restore audio to main speaker — speech recognition switches iOS to PlayAndRecord/earpiece
+    setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false, shouldRouteThroughEarpiece: false });
     const text = finalTranscriptRef.current.trim();
     finalTranscriptRef.current = '';
     if (!text) {
@@ -386,7 +344,7 @@ export default function OnboardingScreen() {
 
   useSpeechRecognitionEvent('error', () => {
     setListening(false);
-    stopRings();
+    setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false, shouldRouteThroughEarpiece: false });
     startIdle();
   });
 
@@ -421,8 +379,8 @@ export default function OnboardingScreen() {
       }
       ExpoSpeechRecognitionModule.start({
         lang: 'en-US',
-        interimResults: true,
-        continuous: true,
+        interimResults: false,
+        continuous: false,
       });
     } catch {
       Alert.alert('Error', 'Could not start voice recognition. Please try again.');
@@ -499,24 +457,6 @@ export default function OnboardingScreen() {
           </Svg>
         </Animated.View>
 
-        {/* Listening rings — expand outward when recording */}
-        {[
-          { scale: ring1Scale, opacity: ring1Opacity },
-          { scale: ring2Scale, opacity: ring2Opacity },
-          { scale: ring3Scale, opacity: ring3Opacity },
-        ].map((ring, i) => (
-          <Animated.View
-            key={i}
-            pointerEvents="none"
-            style={[
-              styles.listeningRing,
-              {
-                opacity: ring.opacity,
-                transform: [{ scale: ring.scale }],
-              },
-            ]}
-          />
-        ))}
       </View>
 
       {/* Human's text */}
@@ -562,13 +502,7 @@ export default function OnboardingScreen() {
         </View>
       </View>
 
-      {/* User's speech transcript */}
-      {listening && transcript ? (
-        <View style={styles.transcriptArea}>
-          <Text style={styles.transcriptLabel}>You</Text>
-          <Text style={styles.transcriptText}>{transcript}</Text>
-        </View>
-      ) : null}
+      {/* User's speech transcript — removed for cleaner UI */}
 
       {/* Bottom — mic or "That's me!" */}
       <View style={styles.bottomArea}>
@@ -661,38 +595,9 @@ const styles = StyleSheet.create({
     right: 0,
     height: 30,
   },
-  transcriptArea: {
-    width: width,
-    paddingHorizontal: 44,
-    paddingVertical: 12,
-  },
-  transcriptLabel: {
-    color: '#FF00DD',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  transcriptText: {
-    color: '#AAAAAA',
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
   bottomArea: {
     paddingBottom: 60,
     alignItems: 'center',
-  },
-  listeningRing: {
-    position: 'absolute',
-    width: ORB_SIZE,
-    height: ORB_SIZE,
-    borderRadius: ORB_SIZE / 2,
-    borderWidth: 1.5,
-    borderColor: '#FF00DD',
   },
   listeningText: {
     color: '#FF00DD',
