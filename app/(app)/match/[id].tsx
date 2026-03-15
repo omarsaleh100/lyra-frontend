@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Animated,
   Pressable,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import Svg, {
   Defs,
@@ -18,9 +19,17 @@ import Svg, {
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../../../lib/supabase';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
-const DEMO_PROFILE = {
+type MatchProfile = {
+  name: string;
+  age: number | null;
+  bio: string;
+  matchReason: string;
+  photo: string | null;
+};
+
+const DEMO_PROFILE: MatchProfile = {
   name: 'Sam',
   age: 26,
   bio: 'I like coffee, reading, diving, and walks in the world.',
@@ -55,10 +64,60 @@ async function respondToMatch(matchId: string, action: 'accept' | 'pass'): Promi
 export default function MatchScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [acting, setActing] = useState(false);
+  const [profile, setProfile] = useState<MatchProfile | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Gradient glow intensities
   const pinkGlow = useRef(new Animated.Value(0.12)).current;
   const grayGlow = useRef(new Animated.Value(0.12)).current;
+
+  useEffect(() => {
+    if (isDemoId(id!)) {
+      setProfile(DEMO_PROFILE);
+      setLoading(false);
+      return;
+    }
+    fetchMatchProfile();
+  }, [id]);
+
+  async function fetchMatchProfile() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data: me } = await supabase
+        .from('users')
+        .select('id')
+        .eq('auth_id', session.user.id)
+        .single();
+      if (!me) return;
+
+      const { data: match } = await supabase
+        .from('matches')
+        .select('user_a, user_b')
+        .eq('id', id)
+        .single();
+      if (!match) return;
+
+      const otherId = match.user_a === me.id ? match.user_b : match.user_a;
+
+      const [{ data: otherUser }, { data: otherProfile }] = await Promise.all([
+        supabase.from('users').select('name, age, photo_url').eq('id', otherId).single(),
+        supabase.from('profiles').select('summary, compatibility_notes').eq('user_id', otherId).single(),
+      ]);
+
+      setProfile({
+        name: otherUser?.name ?? 'Someone',
+        age: otherUser?.age ?? null,
+        bio: otherProfile?.summary ?? '',
+        matchReason: otherProfile?.compatibility_notes ?? '',
+        photo: otherUser?.photo_url ?? null,
+      });
+    } catch {
+      // leave profile null — UI shows empty state
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const handleMeet = async () => {
     if (acting) return;
@@ -70,10 +129,8 @@ export default function MatchScreen() {
       }
       const result = await respondToMatch(id!, 'accept');
       if (result.status === 'confirmed') {
-        // Both accepted — go to radar
         router.replace(`/(app)/radar/${id}`);
       } else {
-        // approved — waiting for the other person
         Alert.alert('Nice!', "They'll be notified. Hang tight!");
         router.back();
       }
@@ -120,6 +177,16 @@ export default function MatchScreen() {
     ]).start();
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator color="#FF00DD" />
+      </View>
+    );
+  }
+
+  const display = profile ?? { name: 'Someone', age: null, bio: '', matchReason: '', photo: null };
+
   return (
     <View style={styles.container}>
       {/* Left edge gradient — gray */}
@@ -153,18 +220,28 @@ export default function MatchScreen() {
         <Text style={styles.header}>Someone compatible is near!</Text>
 
         <View style={styles.photoContainer}>
-          <Image source={{ uri: DEMO_PROFILE.photo }} style={styles.photo} />
+          {display.photo ? (
+            <Image source={{ uri: display.photo }} style={styles.photo} />
+          ) : (
+            <View style={[styles.photo, styles.photoPlaceholder]}>
+              <Text style={styles.photoInitial}>
+                {display.name[0].toUpperCase()}
+              </Text>
+            </View>
+          )}
         </View>
 
         <Text style={styles.name}>
-          {DEMO_PROFILE.name}, {DEMO_PROFILE.age}
+          {display.name}{display.age ? `, ${display.age}` : ''}
         </Text>
-        <Text style={styles.bio}>{DEMO_PROFILE.bio}</Text>
+        {display.bio ? <Text style={styles.bio}>{display.bio}</Text> : null}
 
-        <View style={styles.reasonBox}>
-          <Text style={styles.reasonLabel}>Lyra thinks you're a match because...</Text>
-          <Text style={styles.reasonText}>{DEMO_PROFILE.matchReason}</Text>
-        </View>
+        {display.matchReason ? (
+          <View style={styles.reasonBox}>
+            <Text style={styles.reasonLabel}>Lyra thinks you're a match because...</Text>
+            <Text style={styles.reasonText}>{display.matchReason}</Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Actions */}
@@ -197,6 +274,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   edgeGradient: {
     position: 'absolute',
@@ -232,6 +313,16 @@ const styles = StyleSheet.create({
     height: 210,
     borderRadius: 105,
     backgroundColor: '#111111',
+  },
+  photoPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1A1A1A',
+  },
+  photoInitial: {
+    color: '#FF00DD',
+    fontSize: 72,
+    fontWeight: '300',
   },
   name: {
     color: '#FFFFFF',

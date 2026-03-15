@@ -94,6 +94,21 @@ export default function HomeScreen() {
             }
           },
         )
+        // user_b: notified when user_a accepts (UPDATE to confirmed) → go straight to radar
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'matches',
+            filter: `user_b=eq.${userData.id}`,
+          },
+          (payload) => {
+            if (payload.new.status === 'confirmed') {
+              router.replace(`/(app)/radar/${payload.new.id}`);
+            }
+          },
+        )
         .subscribe();
     };
 

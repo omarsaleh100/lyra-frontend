@@ -42,26 +42,40 @@ export default function LoginScreen() {
 
       if (error) throw error;
 
-      // Create or update user row in users table
+      // Create user row if this is a first login (Apple only provides name once)
       const authUser = data.user;
       const fullName = credential.fullName;
       const displayName = fullName
         ? [fullName.givenName, fullName.familyName].filter(Boolean).join(' ')
         : undefined;
 
-      const { error: upsertError } = await supabase
-        .from('users')
-        .upsert(
-          {
-            auth_id: authUser.id,
-            name: displayName || 'User',
-          },
-          { onConflict: 'auth_id' },
-        );
+      if (displayName) {
+        // First login — upsert with real name
+        const { error: upsertError } = await supabase
+          .from('users')
+          .upsert(
+            { auth_id: authUser.id, name: displayName },
+            { onConflict: 'auth_id' },
+          );
+        if (upsertError) throw upsertError;
+      } else {
+        // Returning login — ensure row exists but don't overwrite their name
+        const { data: existing } = await supabase
+          .from('users')
+          .select('id')
+          .eq('auth_id', authUser.id)
+          .single();
+        if (!existing) {
+          // Auth exists but no users row (edge case) — create with placeholder
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert({ auth_id: authUser.id, name: 'User' });
+          if (insertError) throw insertError;
+        }
+      }
 
-      if (upsertError) throw upsertError;
-
-      router.replace('/(app)/signup');
+      // Let index.tsx decide where to route (signup, onboarding, or home)
+      router.replace('/');
     } catch (err: any) {
       if (err.code === 'ERR_REQUEST_CANCELED') {
         // User cancelled — do nothing
