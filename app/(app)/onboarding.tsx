@@ -33,7 +33,6 @@ const ORB_SIZE = 220;
 export default function OnboardingScreen() {
   const [speaking, setSpeaking] = useState(false);
   const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
   const [done, setDone] = useState(false);
   const [displayText, setDisplayText] = useState('');
   const [profile, setProfile] = useState<LyraProfile | null>(null);
@@ -219,6 +218,49 @@ export default function OnboardingScreen() {
     activeAnim.current.start();
   }, [orbScale, orbGlowScale]);
 
+  // Listening rings — 3 concentric expanding circles
+  const ring1Scale = useRef(new Animated.Value(0)).current;
+  const ring1Opacity = useRef(new Animated.Value(0)).current;
+  const ring2Scale = useRef(new Animated.Value(0)).current;
+  const ring2Opacity = useRef(new Animated.Value(0)).current;
+  const ring3Scale = useRef(new Animated.Value(0)).current;
+  const ring3Opacity = useRef(new Animated.Value(0)).current;
+  const ringAnim = useRef<Animated.CompositeAnimation | null>(null);
+
+  const startRings = useCallback(() => {
+    const createRing = (scale: Animated.Value, opacity: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.parallel([
+            Animated.timing(scale, { toValue: 1.8, duration: 1500, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0, duration: 1500, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(scale, { toValue: 0.8, duration: 0, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0.5, duration: 0, useNativeDriver: true }),
+          ]),
+        ]),
+      );
+    ringAnim.current = Animated.parallel([
+      createRing(ring1Scale, ring1Opacity, 0),
+      createRing(ring2Scale, ring2Opacity, 500),
+      createRing(ring3Scale, ring3Opacity, 1000),
+    ]);
+    // Set initial state
+    ring1Scale.setValue(0.8); ring1Opacity.setValue(0.5);
+    ring2Scale.setValue(0.8); ring2Opacity.setValue(0.5);
+    ring3Scale.setValue(0.8); ring3Opacity.setValue(0.5);
+    ringAnim.current.start();
+  }, [ring1Scale, ring1Opacity, ring2Scale, ring2Opacity, ring3Scale, ring3Opacity]);
+
+  const stopRings = useCallback(() => {
+    ringAnim.current?.stop();
+    ring1Opacity.setValue(0);
+    ring2Opacity.setValue(0);
+    ring3Opacity.setValue(0);
+  }, [ring1Opacity, ring2Opacity, ring3Opacity]);
+
   useEffect(() => { startIdle(); }, [startIdle]);
 
   const animateTextIn = useCallback(() => {
@@ -318,18 +360,8 @@ export default function OnboardingScreen() {
   // Speech recognition events
   useSpeechRecognitionEvent('start', () => {
     setListening(true);
-    setTranscript('');
-    finalTranscriptRef.current = '';
     startListeningAnim();
-  });
-
-  useSpeechRecognitionEvent('partialresults', (e) => {
-    const partial = e.results?.[0]?.transcript || '';
-    setTranscript(
-      finalTranscriptRef.current
-        ? finalTranscriptRef.current + ' ' + partial
-        : partial,
-    );
+    startRings();
   });
 
   useSpeechRecognitionEvent('result', (e) => {
@@ -342,20 +374,15 @@ export default function OnboardingScreen() {
 
   useSpeechRecognitionEvent('end', () => {
     setListening(false);
-    const text = finalTranscriptRef.current.trim();
-    finalTranscriptRef.current = '';
-    if (!text) {
-      setTranscript('');
-      startIdle();
-      return;
-    }
-    animateTextOut().then(() => sendMessage(text));
+    stopRings();
+    if (!text) return;
+    await animateTextOut();
+    sendMessage(text);
   });
 
   useSpeechRecognitionEvent('error', () => {
     setListening(false);
-    setTranscript('');
-    finalTranscriptRef.current = '';
+    stopRings();
     startIdle();
   });
 
@@ -467,21 +494,44 @@ export default function OnboardingScreen() {
             <Circle cx={ORB_SIZE / 2} cy={ORB_SIZE / 2} r={ORB_SIZE / 2} fill="url(#coreGrad)" />
           </Svg>
         </Animated.View>
+
+        {/* Listening rings — expand outward when recording */}
+        {[
+          { scale: ring1Scale, opacity: ring1Opacity },
+          { scale: ring2Scale, opacity: ring2Opacity },
+          { scale: ring3Scale, opacity: ring3Opacity },
+        ].map((ring, i) => (
+          <Animated.View
+            key={i}
+            pointerEvents="none"
+            style={[
+              styles.listeningRing,
+              {
+                opacity: ring.opacity,
+                transform: [{ scale: ring.scale }],
+              },
+            ]}
+          />
+        ))}
       </View>
 
       {/* Human's text */}
       <View style={styles.textArea}>
-        <Animated.Text
-          style={[
-            styles.questionText,
-            {
-              opacity: textOpacity,
-              transform: [{ translateY: textTranslateY }],
-            },
-          ]}
-        >
-          {displayText}
-        </Animated.Text>
+        {listening ? (
+          <Text style={styles.listeningText}>Listening...</Text>
+        ) : (
+          <Animated.Text
+            style={[
+              styles.questionText,
+              {
+                opacity: textOpacity,
+                transform: [{ translateY: textTranslateY }],
+              },
+            ]}
+          >
+            {displayText}
+          </Animated.Text>
+        )}
 
         <View style={styles.fadeTop} pointerEvents="none">
           <Svg width={width} height={30}>
@@ -631,6 +681,21 @@ const styles = StyleSheet.create({
   bottomArea: {
     paddingBottom: 60,
     alignItems: 'center',
+  },
+  listeningRing: {
+    position: 'absolute',
+    width: ORB_SIZE,
+    height: ORB_SIZE,
+    borderRadius: ORB_SIZE / 2,
+    borderWidth: 1.5,
+    borderColor: '#FF00DD',
+  },
+  listeningText: {
+    color: '#FF00DD',
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'center',
+    letterSpacing: 2,
   },
   micButton: {
     width: 72,
