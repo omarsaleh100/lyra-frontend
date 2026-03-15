@@ -11,7 +11,6 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import Voice from '@react-native-voice/voice';
 import * as Speech from 'expo-speech';
 import Svg, {
   Defs,
@@ -21,7 +20,6 @@ import Svg, {
   Ellipse,
   Rect,
   LinearGradient as SvgLinearGradient,
-  Path,
 } from 'react-native-svg';
 import { router } from 'expo-router';
 import { streamInterview, Message } from '../../lib/interview';
@@ -34,8 +32,6 @@ const ORB_SIZE = 220;
 
 export default function OnboardingScreen() {
   const [speaking, setSpeaking] = useState(false);
-  const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
   const [done, setDone] = useState(false);
   const [displayText, setDisplayText] = useState('');
   const [profile, setProfile] = useState<LyraProfile | null>(null);
@@ -116,57 +112,13 @@ export default function OnboardingScreen() {
     activeAnim.current.start();
   }, [orbScale, orbGlowScale]);
 
-  const startListeningAnim = useCallback(() => {
-    activeAnim.current?.stop();
-    activeAnim.current = Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(orbScale, { toValue: 1.1, duration: 600, useNativeDriver: true }),
-          Animated.timing(orbScale, { toValue: 0.95, duration: 600, useNativeDriver: true }),
-        ]),
-        Animated.sequence([
-          Animated.timing(orbGlowScale, { toValue: 1.18, duration: 600, useNativeDriver: true }),
-          Animated.timing(orbGlowScale, { toValue: 1.0, duration: 600, useNativeDriver: true }),
-        ]),
-      ]),
-    );
-    activeAnim.current.start();
-  }, [orbScale, orbGlowScale]);
 
   useEffect(() => { startIdle(); }, [startIdle]);
 
-  // Wire up Voice recognition
+  // Clean up speech on unmount
   useEffect(() => {
-    Voice.onSpeechStart = () => {
-      setListening(true);
-      setTranscript('');
-      startListeningAnim();
-    };
-
-    Voice.onSpeechPartialResults = (e: any) => {
-      if (e.value?.[0]) setTranscript(e.value[0]);
-    };
-
-    Voice.onSpeechResults = async (e: any) => {
-      const text = e.value?.[0];
-      setListening(false);
-      setTranscript('');
-      if (!text) return;
-      await animateTextOut();
-      sendMessage(text);
-    };
-
-    Voice.onSpeechError = () => {
-      setListening(false);
-      setTranscript('');
-      startIdle();
-    };
-
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
-      Speech.stop();
-    };
-  }, [startListeningAnim, startIdle, animateTextOut, sendMessage]);
+    return () => { Speech.stop(); };
+  }, []);
 
   const animateTextIn = useCallback(() => {
     textOpacity.setValue(0);
@@ -341,7 +293,7 @@ export default function OnboardingScreen() {
             },
           ]}
         >
-          {listening ? (transcript || '...') : displayText}
+          {displayText}
         </Animated.Text>
 
         {/* Top fade overlay */}
