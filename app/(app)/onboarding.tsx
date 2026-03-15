@@ -8,6 +8,7 @@ import {
   Animated,
   Alert,
 } from 'react-native';
+import Voice from '@react-native-voice/voice';
 import Svg, {
   Defs,
   RadialGradient,
@@ -29,6 +30,8 @@ const ORB_SIZE = 220;
 
 export default function OnboardingScreen() {
   const [speaking, setSpeaking] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
   const [done, setDone] = useState(false);
   const [displayText, setDisplayText] = useState('');
   const [profile, setProfile] = useState<LyraProfile | null>(null);
@@ -78,7 +81,56 @@ export default function OnboardingScreen() {
     activeAnim.current.start();
   }, [orbScale, orbGlowScale]);
 
+  const startListeningAnim = useCallback(() => {
+    activeAnim.current?.stop();
+    activeAnim.current = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(orbScale, { toValue: 1.1, duration: 600, useNativeDriver: true }),
+          Animated.timing(orbScale, { toValue: 0.95, duration: 600, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(orbGlowScale, { toValue: 1.18, duration: 600, useNativeDriver: true }),
+          Animated.timing(orbGlowScale, { toValue: 1.0, duration: 600, useNativeDriver: true }),
+        ]),
+      ]),
+    );
+    activeAnim.current.start();
+  }, [orbScale, orbGlowScale]);
+
   useEffect(() => { startIdle(); }, [startIdle]);
+
+  // Wire up Voice recognition
+  useEffect(() => {
+    Voice.onSpeechStart = () => {
+      setListening(true);
+      setTranscript('');
+      startListeningAnim();
+    };
+
+    Voice.onSpeechPartialResults = (e: any) => {
+      if (e.value?.[0]) setTranscript(e.value[0]);
+    };
+
+    Voice.onSpeechResults = async (e: any) => {
+      const text = e.value?.[0];
+      setListening(false);
+      setTranscript('');
+      if (!text) return;
+      await animateTextOut();
+      sendMessage(text);
+    };
+
+    Voice.onSpeechError = () => {
+      setListening(false);
+      setTranscript('');
+      startIdle();
+    };
+
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+    };
+  }, [startListeningAnim, startIdle, animateTextOut, sendMessage]);
 
   const animateTextIn = useCallback(() => {
     textOpacity.setValue(0);
@@ -152,11 +204,16 @@ export default function OnboardingScreen() {
   const handleMicPress = async () => {
     if (speaking) return;
 
-    await animateTextOut();
+    if (listening) {
+      await Voice.stop();
+      return;
+    }
 
-    // For now, send a placeholder user response (will be replaced with real voice input)
-    // The mic tap simulates the user responding — in production this will be voice-to-text
-    sendMessage('Next question please.');
+    try {
+      await Voice.start('en-US');
+    } catch {
+      Alert.alert('Error', 'Could not start voice recognition. Please try again.');
+    }
   };
 
   const handleThatsMe = async () => {
@@ -242,7 +299,7 @@ export default function OnboardingScreen() {
             },
           ]}
         >
-          {displayText}
+          {listening ? (transcript || '...') : displayText}
         </Animated.Text>
 
         {/* Top fade overlay */}
@@ -286,7 +343,7 @@ export default function OnboardingScreen() {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
-            style={[styles.micButton, speaking && styles.micSpeaking]}
+            style={[styles.micButton, speaking && styles.micSpeaking, listening && styles.micListening]}
             onPress={handleMicPress}
             disabled={speaking}
             activeOpacity={0.7}
@@ -385,6 +442,10 @@ const styles = StyleSheet.create({
   },
   micSpeaking: {
     opacity: 0.3,
+  },
+  micListening: {
+    backgroundColor: '#FF00DD',
+    borderColor: '#FF00DD',
   },
   continueButton: {
     backgroundColor: '#FFFFFF',
