@@ -6,10 +6,12 @@ const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
 // SecureStore adapter for Supabase auth token persistence
+// Use AFTER_FIRST_UNLOCK so background location task can read the token while device is locked
+const storeOptions = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK };
 const ExpoSecureStoreAdapter = {
-  getItem: (key: string) => SecureStore.getItemAsync(key),
-  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
+  getItem: (key: string) => SecureStore.getItemAsync(key, storeOptions),
+  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value, storeOptions),
+  removeItem: (key: string) => SecureStore.deleteItemAsync(key, storeOptions),
 };
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

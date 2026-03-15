@@ -13,9 +13,9 @@ const bgSupabase = createClient(
   {
     auth: {
       storage: {
-        getItem: (key: string) => SecureStore.getItemAsync(key),
-        setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-        removeItem: (key: string) => SecureStore.deleteItemAsync(key),
+        getItem: (key: string) => SecureStore.getItemAsync(key, { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK }),
+        setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value, { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK }),
+        removeItem: (key: string) => SecureStore.deleteItemAsync(key, { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK }),
       },
       autoRefreshToken: false,
       persistSession: true,
