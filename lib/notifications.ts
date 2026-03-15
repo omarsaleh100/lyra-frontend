@@ -56,26 +56,18 @@ export async function registerForPushNotifications(): Promise<string | null> {
  * - Tap: navigate when user taps a notification
  */
 export function setupNotificationResponseListener(): () => void {
-  // Navigate when notification arrives while app is open
-  const receivedSub = Notifications.addNotificationReceivedListener(
-    (notification) => {
-      const data = notification.request.content.data;
-      if (data?.matchId) {
-        router.push(`/(app)/match/${data.matchId}` as any);
-      } else if (data?.url) {
-        router.push(data.url as any);
-      }
-    },
-  );
+  // Don't auto-navigate on foreground push — the realtime listener in
+  // home.tsx handles it. Both firing causes radar to mount twice.
+  const receivedSub = Notifications.addNotificationReceivedListener(() => {});
 
   // Navigate when user taps a notification
   const responseSub = Notifications.addNotificationResponseReceivedListener(
     (response) => {
       const data = response.notification.request.content.data;
-      if (data?.matchId) {
-        router.push(`/(app)/match/${data.matchId}` as any);
-      } else if (data?.url) {
+      if (data?.url) {
         router.push(data.url as any);
+      } else if (data?.matchId) {
+        router.push(`/(app)/match/${data.matchId}` as any);
       }
     },
   );
