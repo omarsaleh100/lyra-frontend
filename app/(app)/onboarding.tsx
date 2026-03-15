@@ -319,9 +319,9 @@ export default function OnboardingScreen() {
     };
   }, []);
 
-  // Start the interview on mount
+  // Start the interview on mount — seed with a greeting so Claude has at least one message
   useEffect(() => {
-    sendMessage();
+    sendMessage('Hi');
   }, []);
 
   const handleMicPress = async () => {
