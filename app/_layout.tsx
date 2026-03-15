@@ -3,6 +3,7 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import '../lib/location'; // Register background location task on every app launch
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
