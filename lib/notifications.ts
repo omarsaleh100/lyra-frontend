@@ -81,7 +81,7 @@ export function setupNotificationResponseListener(): () => void {
   );
 
   return () => {
-    receivedSub.remove();
-    responseSub.remove();
+    receivedSub?.remove?.();
+    responseSub?.remove?.();
   };
 }

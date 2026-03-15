@@ -56,7 +56,7 @@ async function fetchMatchProfile(matchId: string): Promise<MatchProfile> {
   // Fetch the match record
   const { data: match, error: matchError } = await supabase
     .from('matches')
-    .select('user_a, user_b, summary')
+    .select('user_a, user_b')
     .eq('id', matchId)
     .single();
 
@@ -68,7 +68,7 @@ async function fetchMatchProfile(matchId: string): Promise<MatchProfile> {
   // Fetch user data and profile data in parallel (by internal id)
   const [userResult, profileResult] = await Promise.all([
     supabase.from('users').select('name, age, photo_url').eq('id', otherUserId).single(),
-    supabase.from('profiles').select('summary, compatibility_notes').eq('user_id', otherUserId).single(),
+    supabase.from('profiles').select('summary').eq('user_id', otherUserId).single(),
   ]);
 
   if (userResult.error || !userResult.data) throw new Error('User not found');
@@ -79,8 +79,8 @@ async function fetchMatchProfile(matchId: string): Promise<MatchProfile> {
   return {
     name: userData.name || 'Someone',
     age: userData.age || 0,
-    bio: profileData?.summary || '',
-    matchReason: match.summary || profileData?.compatibility_notes || '',
+    bio: '',
+    matchReason: profileData?.summary || '',
     photo: userData.photo_url || null,
   };
 }
@@ -127,8 +127,7 @@ export default function MatchScreen() {
     fetchMatchProfile(id)
       .then(setProfile)
       .catch((err) => {
-        console.warn('Failed to fetch match profile:', err.message);
-        // Fall back to demo profile so the screen isn't broken
+        Alert.alert('Match fetch failed', err.message);
         setProfile(DEMO_PROFILE);
       })
       .finally(() => setLoading(false));
