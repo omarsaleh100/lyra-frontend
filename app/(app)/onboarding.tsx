@@ -8,6 +8,8 @@ import {
   Animated,
   Alert,
 } from 'react-native';
+import Voice from '@react-native-voice/voice';
+import * as Speech from 'expo-speech';
 import Svg, {
   Defs,
   RadialGradient,
@@ -29,11 +31,43 @@ const ORB_SIZE = 220;
 
 export default function OnboardingScreen() {
   const [speaking, setSpeaking] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
   const [done, setDone] = useState(false);
   const [displayText, setDisplayText] = useState('');
   const [profile, setProfile] = useState<LyraProfile | null>(null);
   const [saving, setSaving] = useState(false);
   const messagesRef = useRef<Message[]>([]);
+  const speechBufferRef = useRef('');
+
+  // Speak a sentence immediately, queuing behind any in-progress speech
+  const speakChunk = useCallback((text: string) => {
+    const cleaned = text.trim();
+    if (!cleaned) return;
+    Speech.speak(cleaned, { language: 'en-US', _isQueued: true } as any);
+  }, []);
+
+  // Called on each streamed chunk — accumulate and speak sentence by sentence
+  const flushSpeechBuffer = useCallback((chunk: string, final = false) => {
+    speechBufferRef.current += chunk;
+    const sentenceEnd = /[.!?]/;
+
+    let buf = speechBufferRef.current;
+    let match;
+    // Keep pulling out complete sentences and speaking them
+    while ((match = buf.search(sentenceEnd)) !== -1) {
+      const sentence = buf.slice(0, match + 1);
+      buf = buf.slice(match + 1);
+      speakChunk(sentence);
+    }
+    speechBufferRef.current = buf;
+
+    // On final chunk, speak whatever's left in the buffer
+    if (final && buf.trim()) {
+      speakChunk(buf);
+      speechBufferRef.current = '';
+    }
+  }, [speakChunk]);
 
   // Text fade
   const textOpacity = useRef(new Animated.Value(0)).current;
@@ -78,7 +112,57 @@ export default function OnboardingScreen() {
     activeAnim.current.start();
   }, [orbScale, orbGlowScale]);
 
+  const startListeningAnim = useCallback(() => {
+    activeAnim.current?.stop();
+    activeAnim.current = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(orbScale, { toValue: 1.1, duration: 600, useNativeDriver: true }),
+          Animated.timing(orbScale, { toValue: 0.95, duration: 600, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(orbGlowScale, { toValue: 1.18, duration: 600, useNativeDriver: true }),
+          Animated.timing(orbGlowScale, { toValue: 1.0, duration: 600, useNativeDriver: true }),
+        ]),
+      ]),
+    );
+    activeAnim.current.start();
+  }, [orbScale, orbGlowScale]);
+
   useEffect(() => { startIdle(); }, [startIdle]);
+
+  // Wire up Voice recognition
+  useEffect(() => {
+    Voice.onSpeechStart = () => {
+      setListening(true);
+      setTranscript('');
+      startListeningAnim();
+    };
+
+    Voice.onSpeechPartialResults = (e: any) => {
+      if (e.value?.[0]) setTranscript(e.value[0]);
+    };
+
+    Voice.onSpeechResults = async (e: any) => {
+      const text = e.value?.[0];
+      setListening(false);
+      setTranscript('');
+      if (!text) return;
+      await animateTextOut();
+      sendMessage(text);
+    };
+
+    Voice.onSpeechError = () => {
+      setListening(false);
+      setTranscript('');
+      startIdle();
+    };
+
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+      Speech.stop();
+    };
+  }, [startListeningAnim, startIdle, animateTextOut, sendMessage]);
 
   const animateTextIn = useCallback(() => {
     textOpacity.setValue(0);
@@ -108,6 +192,8 @@ export default function OnboardingScreen() {
     startSpeaking();
     setDisplayText('');
     animateTextIn();
+    speechBufferRef.current = '';
+    Speech.stop();
 
     let fullResponse = '';
 
@@ -121,8 +207,14 @@ export default function OnboardingScreen() {
             const cleaned = updated.replace(/<profile>[\s\S]*$/, '').trim();
             return cleaned;
           });
+          // Speak chunk unless it's inside a <profile> block
+          if (!chunk.includes('<profile>') && !fullResponse.includes('<profile>')) {
+            flushSpeechBuffer(chunk);
+          }
         },
       );
+      // Flush any remaining buffer after stream ends
+      flushSpeechBuffer('', true);
 
       messagesRef.current.push({ role: 'assistant', content: fullResponse });
 
@@ -152,11 +244,20 @@ export default function OnboardingScreen() {
   const handleMicPress = async () => {
     if (speaking) return;
 
-    await animateTextOut();
+    if (listening) {
+      await Voice.stop();
+      return;
+    }
 
-    // For now, send a placeholder user response (will be replaced with real voice input)
-    // The mic tap simulates the user responding — in production this will be voice-to-text
-    sendMessage('Next question please.');
+    // Stop Lyra mid-sentence if still talking
+    Speech.stop();
+    speechBufferRef.current = '';
+
+    try {
+      await Voice.start('en-US');
+    } catch {
+      Alert.alert('Error', 'Could not start voice recognition. Please try again.');
+    }
   };
 
   const handleThatsMe = async () => {
@@ -242,7 +343,7 @@ export default function OnboardingScreen() {
             },
           ]}
         >
-          {displayText}
+          {listening ? (transcript || '...') : displayText}
         </Animated.Text>
 
         {/* Top fade overlay */}
@@ -286,7 +387,7 @@ export default function OnboardingScreen() {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
-            style={[styles.micButton, speaking && styles.micSpeaking]}
+            style={[styles.micButton, speaking && styles.micSpeaking, listening && styles.micListening]}
             onPress={handleMicPress}
             disabled={speaking}
             activeOpacity={0.7}
@@ -385,6 +486,10 @@ const styles = StyleSheet.create({
   },
   micSpeaking: {
     opacity: 0.3,
+  },
+  micListening: {
+    backgroundColor: '#FF00DD',
+    borderColor: '#FF00DD',
   },
   continueButton: {
     backgroundColor: '#FFFFFF',
