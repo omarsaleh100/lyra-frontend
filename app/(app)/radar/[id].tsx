@@ -188,7 +188,7 @@ export default function RadarScreen() {
       } catch {
         // GPS may not be available
       }
-    }, 2000);
+    }, 1000);
 
     return () => {
       clearInterval(locationInterval);

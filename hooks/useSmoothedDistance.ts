@@ -1,23 +1,23 @@
 import { useRef, useCallback } from 'react';
 
 /**
- * Moving average smoother for distance values.
- * Prevents the displayed distance from jumping around.
+ * Exponential moving average smoother for distance values.
+ * alpha: weight for the newest reading (0–1). Lower = smoother but slower to respond.
  */
-export function useSmoothedDistance(windowSize = 5) {
-  const buffer = useRef<number[]>([]);
+export function useSmoothedDistance(alpha = 0.2) {
+  const smoothed = useRef<number | null>(null);
 
   const push = useCallback((value: number): number => {
-    buffer.current.push(value);
-    if (buffer.current.length > windowSize) {
-      buffer.current.shift();
+    if (smoothed.current === null) {
+      smoothed.current = value;
+    } else {
+      smoothed.current = alpha * value + (1 - alpha) * smoothed.current;
     }
-    const sum = buffer.current.reduce((a, b) => a + b, 0);
-    return sum / buffer.current.length;
-  }, [windowSize]);
+    return smoothed.current;
+  }, [alpha]);
 
   const reset = useCallback(() => {
-    buffer.current = [];
+    smoothed.current = null;
   }, []);
 
   return { push, reset };
