@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
@@ -28,17 +28,8 @@ export default function LoginScreen() {
       });
 
       if (!signInError) {
-        // Existing user — ensure users row exists
-        const { data: { user: existingUser } } = await supabase.auth.getUser();
-        if (existingUser) {
-          await supabase
-            .from('users')
-            .upsert(
-              { auth_id: existingUser.id, name: 'User' },
-              { onConflict: 'auth_id' },
-            );
-        }
-        router.replace('/(app)/signup');
+        // Returning user — let the smart router decide where to go
+        router.replace('/');
         return;
       }
 
@@ -49,18 +40,10 @@ export default function LoginScreen() {
       });
       if (signUpError) throw signUpError;
 
-      const authUser = data.user;
-      if (!authUser) throw new Error('Sign up succeeded but no user returned');
+      if (!data.user) throw new Error('Sign up succeeded but no user returned');
 
-      const { error: upsertError } = await supabase
-        .from('users')
-        .upsert(
-          { auth_id: authUser.id, name: 'User' },
-          { onConflict: 'auth_id' },
-        );
-      if (upsertError) throw upsertError;
-
-      router.replace('/(app)/signup');
+      // New user — smart router will send them to signup
+      router.replace('/');
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Something went wrong');
     } finally {
@@ -69,7 +52,10 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <View style={styles.content}>
         <Text style={styles.title}>Lyra</Text>
         <Text style={styles.subtitle}>Find your person</Text>
@@ -97,7 +83,7 @@ export default function LoginScreen() {
           </Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

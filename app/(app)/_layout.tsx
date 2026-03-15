@@ -7,6 +7,22 @@ const SignOutButton = () => (
   <TouchableOpacity
     onPress={async () => {
       await stopLocationTracking();
+
+      // Delete any matches involving this user (for testing)
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const { data: me } = await supabase
+          .from('users')
+          .select('id')
+          .eq('auth_id', authUser.id)
+          .single();
+
+        if (me) {
+          await supabase.from('matches').delete().eq('user_a', me.id);
+          await supabase.from('matches').delete().eq('user_b', me.id);
+        }
+      }
+
       await supabase.auth.signOut();
     }}
     style={{ padding: 10 }}

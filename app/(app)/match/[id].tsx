@@ -44,6 +44,15 @@ async function fetchMatchProfile(matchId: string): Promise<MatchProfile> {
   const { data: { user: authUser } } = await supabase.auth.getUser();
   if (!authUser) throw new Error('Not authenticated');
 
+  // Get my internal user ID
+  const { data: me } = await supabase
+    .from('users')
+    .select('id')
+    .eq('auth_id', authUser.id)
+    .single();
+
+  if (!me) throw new Error('User row not found');
+
   // Fetch the match record
   const { data: match, error: matchError } = await supabase
     .from('matches')
@@ -53,13 +62,13 @@ async function fetchMatchProfile(matchId: string): Promise<MatchProfile> {
 
   if (matchError || !match) throw new Error('Match not found');
 
-  // Determine the other user
-  const otherUserId = match.user_a === authUser.id ? match.user_b : match.user_a;
+  // Determine the other user (user_a/user_b store internal users.id)
+  const otherUserId = match.user_a === me.id ? match.user_b : match.user_a;
 
-  // Fetch user data and profile data in parallel
+  // Fetch user data and profile data in parallel (by internal id)
   const [userResult, profileResult] = await Promise.all([
-    supabase.from('users').select('name, age, photo_url').eq('auth_id', otherUserId).single(),
-    supabase.from('profiles').select('summary, compatibility_notes').eq('auth_id', otherUserId).single(),
+    supabase.from('users').select('name, age, photo_url').eq('id', otherUserId).single(),
+    supabase.from('profiles').select('summary, compatibility_notes').eq('user_id', otherUserId).single(),
   ]);
 
   if (userResult.error || !userResult.data) throw new Error('User not found');

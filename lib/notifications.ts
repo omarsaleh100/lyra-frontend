@@ -29,8 +29,14 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
   if (finalStatus !== 'granted') return null;
 
-  const tokenData = await Notifications.getExpoPushTokenAsync();
-  const token = tokenData.data;
+  let token: string;
+  try {
+    const tokenData = await Notifications.getExpoPushTokenAsync();
+    token = tokenData.data;
+  } catch {
+    // Fails on simulator without APS entitlement — silently skip
+    return null;
+  }
 
   // Store token in users table
   const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -45,19 +51,37 @@ export async function registerForPushNotifications(): Promise<string | null> {
 }
 
 /**
- * Set up listener for notification taps — navigate to match screen.
+ * Set up listeners for notifications:
+ * - Foreground: auto-navigate when notification arrives
+ * - Tap: navigate when user taps a notification
  */
 export function setupNotificationResponseListener(): () => void {
-  const subscription = Notifications.addNotificationResponseReceivedListener(
-    (response) => {
-      const data = response.notification.request.content.data;
-      if (data?.url) {
-        router.push(data.url as any);
-      } else if (data?.matchId) {
+  // Navigate when notification arrives while app is open
+  const receivedSub = Notifications.addNotificationReceivedListener(
+    (notification) => {
+      const data = notification.request.content.data;
+      if (data?.matchId) {
         router.push(`/(app)/match/${data.matchId}` as any);
+      } else if (data?.url) {
+        router.push(data.url as any);
       }
     },
   );
 
-  return () => subscription.remove();
+  // Navigate when user taps a notification
+  const responseSub = Notifications.addNotificationResponseReceivedListener(
+    (response) => {
+      const data = response.notification.request.content.data;
+      if (data?.matchId) {
+        router.push(`/(app)/match/${data.matchId}` as any);
+      } else if (data?.url) {
+        router.push(data.url as any);
+      }
+    },
+  );
+
+  return () => {
+    receivedSub.remove();
+    responseSub.remove();
+  };
 }

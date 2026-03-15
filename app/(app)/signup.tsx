@@ -70,7 +70,7 @@ export default function SignupScreen() {
     const arrayBuffer = await new Response(blob).arrayBuffer();
 
     const { error } = await supabase.storage
-      .from('avatars')
+      .from('profilepic')
       .upload(filePath, arrayBuffer, {
         contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}`,
         upsert: false,
@@ -78,7 +78,7 @@ export default function SignupScreen() {
 
     if (error) throw error;
 
-    const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+    const { data } = supabase.storage.from('profilepic').getPublicUrl(filePath);
     return data.publicUrl;
   };
 
