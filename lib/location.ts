@@ -78,7 +78,7 @@ export async function startLocationTracking(): Promise<boolean> {
     distanceInterval: 20, // or every 20 meters
     showsBackgroundLocationIndicator: true,
     foregroundService: {
-      notificationTitle: 'Lyra',
+      notificationTitle: 'Human',
       notificationBody: 'Looking for compatible people nearby',
     },
   });

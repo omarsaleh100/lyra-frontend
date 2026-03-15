@@ -289,7 +289,7 @@ export default function MatchScreen() {
 
         {profile.matchReason ? (
           <View style={styles.reasonBox}>
-            <Text style={styles.reasonLabel}>Lyra thinks you're a match because...</Text>
+            <Text style={styles.reasonLabel}>Human thinks you're a match because...</Text>
             <Text style={styles.reasonText}>{profile.matchReason}</Text>
           </View>
         ) : null}

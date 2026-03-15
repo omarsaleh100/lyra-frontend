@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Lyra",
+    "name": "Human",
     "slug": "lyra",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -19,8 +19,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.omarsaleh.lyra",
       "infoPlist": {
-        "NSSpeechRecognitionUsageDescription": "Lyra listens to your voice to conduct the personality interview.",
-        "NSMicrophoneUsageDescription": "Lyra uses your microphone for the voice interview."
+        "NSSpeechRecognitionUsageDescription": "Human listens to your voice to conduct the personality interview.",
+        "NSMicrophoneUsageDescription": "Human uses your microphone for the voice interview."
       }
     },
     "plugins": [
@@ -29,9 +29,9 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Lyra needs your location to find compatible people nearby.",
-          "locationAlwaysPermission": "Lyra needs background location to notify you when someone compatible is near.",
-          "locationWhenInUsePermission": "Lyra needs your location to guide you toward your match.",
+          "locationAlwaysAndWhenInUsePermission": "Human needs your location to find compatible people nearby.",
+          "locationAlwaysPermission": "Human needs background location to notify you when someone compatible is near.",
+          "locationWhenInUsePermission": "Human needs your location to guide you toward your match.",
           "isIosBackgroundLocationEnabled": true
         }
       ],
@@ -44,21 +44,21 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Lyra needs access to your photos so you can add pictures to your profile."
+          "photosPermission": "Human needs access to your photos so you can add pictures to your profile."
         }
       ],
       [
         "expo-nearby-connections",
         {
           "bonjourServicesName": "lyra",
-          "localNetworkUsagePermissionText": "Lyra uses local networking to detect when your match is nearby"
+          "localNetworkUsagePermissionText": "Human uses local networking to detect when your match is nearby"
         }
       ],
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Lyra uses your microphone for the voice interview.",
-          "speechRecognitionPermission": "Lyra listens to your voice to conduct the personality interview."
+          "microphonePermission": "Human uses your microphone for the voice interview.",
+          "speechRecognitionPermission": "Human listens to your voice to conduct the personality interview."
         }
       ],
       "expo-audio"

@@ -57,7 +57,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>Lyra</Text>
+        <Text style={styles.title}>Human</Text>
         <Text style={styles.subtitle}>Find your person</Text>
       </View>
 

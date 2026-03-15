@@ -397,7 +397,7 @@ export default function OnboardingScreen() {
   return (
     <View style={styles.container}>
       {/* Title */}
-      <Text style={styles.title}>Lyra</Text>
+      <Text style={styles.title}>Human</Text>
 
       {/* Orb — centered */}
       <View style={styles.orbArea}>
@@ -439,7 +439,7 @@ export default function OnboardingScreen() {
         </Animated.View>
       </View>
 
-      {/* Lyra's text */}
+      {/* Human's text */}
       <View style={styles.textArea}>
         <Animated.Text
           style={[
