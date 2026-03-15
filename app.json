@@ -17,7 +17,11 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.omarsaleh.lyra"
+      "bundleIdentifier": "com.omarsaleh.lyra",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Lyra listens to your voice to conduct the personality interview.",
+        "NSMicrophoneUsageDescription": "Lyra uses your microphone for the voice interview."
+      }
     },
     "plugins": [
       "expo-router",
