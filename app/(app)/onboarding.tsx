@@ -2,15 +2,13 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
   Animated,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import Voice from '@react-native-voice/voice';
 import * as Speech from 'expo-speech';
 import Svg, {
   Defs,
@@ -20,6 +18,7 @@ import Svg, {
   Ellipse,
   Rect,
   LinearGradient as SvgLinearGradient,
+  Path,
 } from 'react-native-svg';
 import { router } from 'expo-router';
 import { streamInterview, Message } from '../../lib/interview';
@@ -32,11 +31,12 @@ const ORB_SIZE = 220;
 
 export default function OnboardingScreen() {
   const [speaking, setSpeaking] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
   const [done, setDone] = useState(false);
   const [displayText, setDisplayText] = useState('');
   const [profile, setProfile] = useState<LyraProfile | null>(null);
   const [saving, setSaving] = useState(false);
-  const [inputText, setInputText] = useState('');
   const messagesRef = useRef<Message[]>([]);
   const speechBufferRef = useRef('');
 
@@ -112,13 +112,24 @@ export default function OnboardingScreen() {
     activeAnim.current.start();
   }, [orbScale, orbGlowScale]);
 
+  const startListeningAnim = useCallback(() => {
+    activeAnim.current?.stop();
+    activeAnim.current = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(orbScale, { toValue: 1.1, duration: 600, useNativeDriver: true }),
+          Animated.timing(orbScale, { toValue: 0.95, duration: 600, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(orbGlowScale, { toValue: 1.18, duration: 600, useNativeDriver: true }),
+          Animated.timing(orbGlowScale, { toValue: 1.0, duration: 600, useNativeDriver: true }),
+        ]),
+      ]),
+    );
+    activeAnim.current.start();
+  }, [orbScale, orbGlowScale]);
 
   useEffect(() => { startIdle(); }, [startIdle]);
-
-  // Clean up speech on unmount
-  useEffect(() => {
-    return () => { Speech.stop(); };
-  }, []);
 
   const animateTextIn = useCallback(() => {
     textOpacity.setValue(0);
@@ -191,20 +202,62 @@ export default function OnboardingScreen() {
       setSpeaking(false);
       startIdle();
     }
-  }, [startSpeaking, startIdle, animateTextIn]);
+  }, [startSpeaking, startIdle, animateTextIn, flushSpeechBuffer]);
+
+  // Wire up Voice recognition — must be after animateTextOut and sendMessage
+  useEffect(() => {
+    Voice.onSpeechStart = () => {
+      setListening(true);
+      setTranscript('');
+      startListeningAnim();
+    };
+
+    Voice.onSpeechPartialResults = (e: any) => {
+      if (e.value?.[0]) setTranscript(e.value[0]);
+    };
+
+    Voice.onSpeechResults = async (e: any) => {
+      const text = e.value?.[0];
+      setListening(false);
+      setTranscript('');
+      if (!text) return;
+      await animateTextOut();
+      sendMessage(text);
+    };
+
+    Voice.onSpeechError = () => {
+      setListening(false);
+      setTranscript('');
+      startIdle();
+    };
+
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+      Speech.stop();
+    };
+  }, [startListeningAnim, startIdle, animateTextOut, sendMessage]);
 
   // Start the interview on mount
   useEffect(() => {
     sendMessage();
   }, []);
 
-  const handleSend = async () => {
-    const trimmed = inputText.trim();
-    if (speaking || !trimmed) return;
+  const handleMicPress = async () => {
+    if (speaking) return;
 
-    setInputText('');
-    await animateTextOut();
-    sendMessage(trimmed);
+    if (listening) {
+      await Voice.stop();
+      return;
+    }
+
+    Speech.stop();
+    speechBufferRef.current = '';
+
+    try {
+      await Voice.start('en-US');
+    } catch {
+      Alert.alert('Error', 'Could not start voice recognition. Please try again.');
+    }
   };
 
   const handleThatsMe = async () => {
@@ -235,10 +288,7 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={styles.container}>
       {/* Title */}
       <Text style={styles.title}>Lyra</Text>
 
@@ -336,28 +386,26 @@ export default function OnboardingScreen() {
             </Text>
           </TouchableOpacity>
         ) : (
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Type your answer..."
-              placeholderTextColor="#666666"
-              value={inputText}
-              onChangeText={setInputText}
-              editable={!speaking}
-              onSubmitEditing={handleSend}
-              returnKeyType="send"
-            />
-            <TouchableOpacity
-              style={[styles.sendButton, (speaking || !inputText.trim()) && { opacity: 0.3 }]}
-              onPress={handleSend}
-              disabled={speaking || !inputText.trim()}
-            >
-              <Text style={styles.sendButtonText}>Send</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[styles.micButton, speaking && styles.micSpeaking, listening && styles.micListening]}
+            onPress={handleMicPress}
+            disabled={speaking}
+            activeOpacity={0.7}
+          >
+            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M12 1C10.34 1 9 2.34 9 4V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V4C15 2.34 13.66 1 12 1Z"
+                fill="#FFFFFF"
+              />
+              <Path
+                d="M17 12C17 14.76 14.76 17 12 17C9.24 17 7 14.76 7 12H5C5 15.53 7.61 18.43 11 18.92V22H13V18.92C16.39 18.43 19 15.53 19 12H17Z"
+                fill="#FFFFFF"
+              />
+            </Svg>
+          </TouchableOpacity>
         )}
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -454,6 +502,19 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 16,
     fontWeight: '600',
+  },
+  micButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1.5,
+    borderColor: '#444444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  micSpeaking: {
+    opacity: 0.4,
   },
   micListening: {
     backgroundColor: '#FF00DD',
