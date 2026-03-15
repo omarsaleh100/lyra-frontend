@@ -17,11 +17,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.omarsaleh.lyra",
-      "infoPlist": {
-        "NSSpeechRecognitionUsageDescription": "Human listens to your voice to conduct the personality interview.",
-        "NSMicrophoneUsageDescription": "Human uses your microphone for the voice interview."
-      }
+      "bundleIdentifier": "com.omarsaleh.lyra"
     },
     "plugins": [
       "expo-router",
@@ -54,14 +50,6 @@
           "localNetworkUsagePermissionText": "Human uses local networking to detect when your match is nearby"
         }
       ],
-      [
-        "expo-speech-recognition",
-        {
-          "microphonePermission": "Human uses your microphone for the voice interview.",
-          "speechRecognitionPermission": "Human listens to your voice to conduct the personality interview."
-        }
-      ],
-      "expo-audio",
       "./plugins/withSwiftDebugFlag"
     ],
     "experiments": {

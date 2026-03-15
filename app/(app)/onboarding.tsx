@@ -2,15 +2,15 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
   Animated,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
-import { createAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
-import * as FileSystem from 'expo-file-system/legacy';
 import Svg, {
   Defs,
   RadialGradient,
@@ -31,129 +31,14 @@ const { width } = Dimensions.get('window');
 const ORB_SIZE = 220;
 
 export default function OnboardingScreen() {
-  const [speaking, setSpeaking] = useState(false);
-  const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
+  const [thinking, setThinking] = useState(false);
   const [done, setDone] = useState(false);
   const [displayText, setDisplayText] = useState('');
+  const [inputText, setInputText] = useState('');
   const [profile, setProfile] = useState<LyraProfile | null>(null);
   const [saving, setSaving] = useState(false);
   const messagesRef = useRef<Message[]>([]);
-  const currentPlayerRef = useRef<AudioPlayer | null>(null);
-  const profileDetectedRef = useRef(false);      // true once <profile> tag seen in response
-  const finalTranscriptRef = useRef('');
-
-  // Configure audio to play even in silent mode
-  useEffect(() => {
-    setAudioModeAsync({ playsInSilentMode: true });
-  }, []);
-
-  // Play the next sentence in the queue via OpenAI TTS
-  const playNext = useCallback(async () => {
-    if (isPlayingRef.current || audioQueueRef.current.length === 0) return;
-    const sentence = audioQueueRef.current.shift()!;
-    isPlayingRef.current = true;
-
-    try {
-      // Reset audio session to main speaker — speech recognition may have switched to earpiece
-      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false, shouldRouteThroughEarpiece: false });
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/tts`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token ?? ''}`,
-            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-          },
-          body: JSON.stringify({ text: sentence }),
-        },
-      );
-      const { audio } = await res.json();
-      if (!audio) throw new Error('no audio');
-
-      const path = `${FileSystem.cacheDirectory}lyra_tts_${Date.now()}.mp3`;
-      await FileSystem.writeAsStringAsync(path, audio, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      const player = createAudioPlayer(path);
-      currentPlayerRef.current = player;
-
-      player.addListener('playbackStatusUpdate', (status) => {
-        if (status.didJustFinish) {
-          isPlayingRef.current = false;
-          currentPlayerRef.current = null;
-          player.release();
-          FileSystem.deleteAsync(path, { idempotent: true });
-          if (audioQueueRef.current.length > 0) {
-            playNext();
-          } else if (!streamActiveRef.current) {
-            setSpeaking(false);
-            startIdle();
-          }
-        }
-      });
-
-      player.play();
-    } catch {
-      isPlayingRef.current = false;
-      if (audioQueueRef.current.length > 0) {
-        playNext();
-      } else if (!streamActiveRef.current) {
-        setSpeaking(false);
-        startIdle();
-      }
-    }
-  }, []);
-
-  // Stop all audio and clear the queue
-  const stopAudio = useCallback(async () => {
-    audioQueueRef.current = [];
-    isPlayingRef.current = false;
-    if (currentPlayerRef.current) {
-      currentPlayerRef.current.pause();
-      currentPlayerRef.current.release();
-      currentPlayerRef.current = null;
-    }
-  }, []);
-
-  // Accumulate streamed chunks and send to TTS in natural phrases
-  const pendingSentencesRef = useRef('');
-  const MIN_TTS_LENGTH = 60;
-
-  const flushSpeechBuffer = useCallback((chunk: string, final = false) => {
-    speechBufferRef.current += chunk;
-
-    let buf = speechBufferRef.current;
-    let match;
-    while ((match = buf.search(/[.!?]/)) !== -1) {
-      const sentence = buf.slice(0, match + 1).trim();
-      buf = buf.slice(match + 1);
-      if (sentence) {
-        pendingSentencesRef.current += (pendingSentencesRef.current ? ' ' : '') + sentence;
-        if (pendingSentencesRef.current.length >= MIN_TTS_LENGTH) {
-          audioQueueRef.current.push(pendingSentencesRef.current);
-          pendingSentencesRef.current = '';
-          playNext();
-        }
-      }
-    }
-    speechBufferRef.current = buf;
-
-    if (final) {
-      if (buf.trim()) {
-        pendingSentencesRef.current += (pendingSentencesRef.current ? ' ' : '') + buf.trim();
-      }
-      if (pendingSentencesRef.current) {
-        audioQueueRef.current.push(pendingSentencesRef.current);
-        pendingSentencesRef.current = '';
-      }
-      speechBufferRef.current = '';
-      playNext();
-    }
-  }, [playNext]);
+  const profileDetectedRef = useRef(false);
 
   // Text fade
   const textOpacity = useRef(new Animated.Value(0)).current;
@@ -181,7 +66,7 @@ export default function OnboardingScreen() {
     activeAnim.current.start();
   }, [orbScale, orbGlowScale]);
 
-  const startSpeaking = useCallback(() => {
+  const startThinking = useCallback(() => {
     activeAnim.current?.stop();
     activeAnim.current = Animated.loop(
       Animated.parallel([
@@ -197,24 +82,6 @@ export default function OnboardingScreen() {
     );
     activeAnim.current.start();
   }, [orbScale, orbGlowScale]);
-
-  const startListeningAnim = useCallback(() => {
-    activeAnim.current?.stop();
-    activeAnim.current = Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(orbScale, { toValue: 1.1, duration: 600, useNativeDriver: true }),
-          Animated.timing(orbScale, { toValue: 0.95, duration: 600, useNativeDriver: true }),
-        ]),
-        Animated.sequence([
-          Animated.timing(orbGlowScale, { toValue: 1.18, duration: 600, useNativeDriver: true }),
-          Animated.timing(orbGlowScale, { toValue: 1.0, duration: 600, useNativeDriver: true }),
-        ]),
-      ]),
-    );
-    activeAnim.current.start();
-  }, [orbScale, orbGlowScale]);
-
 
   useEffect(() => { startIdle(); }, [startIdle]);
 
@@ -251,16 +118,11 @@ export default function OnboardingScreen() {
       }
     }
 
-    setSpeaking(true);
-    streamActiveRef.current = true;
+    setThinking(true);
     profileDetectedRef.current = false;
-    startSpeaking();
-    setTranscript('');
+    startThinking();
     setDisplayText('');
     animateTextIn();
-    speechBufferRef.current = '';
-    pendingSentencesRef.current = '';
-    stopAudio();
 
     let fullResponse = '';
 
@@ -268,26 +130,19 @@ export default function OnboardingScreen() {
       fullResponse = await streamInterview(
         messagesRef.current,
         (chunk) => {
-          // Detect <profile> tag — check accumulated buffer too in case tag splits across chunks
           if (!profileDetectedRef.current) {
             fullResponse += chunk;
             if (fullResponse.includes('<profile>')) {
               profileDetectedRef.current = true;
             }
           }
-          // Strip <profile> tags from display text
           setDisplayText((prev) => {
             const updated = prev + chunk;
             const cleaned = updated.replace(/<profile>[\s\S]*$/, '').trim();
             return cleaned;
           });
-          // Speak chunk unless profile has been detected
-          if (!profileDetectedRef.current) {
-            flushSpeechBuffer(chunk);
-          }
         },
       );
-      flushSpeechBuffer('', true);
 
       messagesRef.current.push({ role: 'assistant', content: fullResponse });
 
@@ -303,83 +158,22 @@ export default function OnboardingScreen() {
       console.error('Interview error:', err);
       setDisplayText(err.message || 'Something went wrong. Tap to try again.');
     } finally {
-      streamActiveRef.current = false;
-      // Only go idle if audio has already drained — otherwise playNext handles it
-      if (!isPlayingRef.current && audioQueueRef.current.length === 0) {
-        setSpeaking(false);
-        startIdle();
-      }
-    }
-  }, [startSpeaking, startIdle, animateTextIn, flushSpeechBuffer, stopAudio]);
-
-  // Speech recognition events
-  useSpeechRecognitionEvent('start', () => {
-    setListening(true);
-    startListeningAnim();
-  });
-
-  useSpeechRecognitionEvent('result', (e) => {
-    const text = e.results?.[0]?.transcript;
-    if (text) {
-      finalTranscriptRef.current = text;
-      setTranscript(text);
-    }
-  });
-
-  useSpeechRecognitionEvent('end', () => {
-    setListening(false);
-    const text = finalTranscriptRef.current.trim();
-    finalTranscriptRef.current = '';
-    if (!text) {
-      setTranscript('');
+      setThinking(false);
       startIdle();
-      return;
     }
-    animateTextOut().then(() => sendMessage(text));
-  });
+  }, [startThinking, startIdle, animateTextIn]);
 
-  useSpeechRecognitionEvent('error', () => {
-    setListening(false);
-    startIdle();
-  });
-
-  useEffect(() => {
-    return () => {
-      ExpoSpeechRecognitionModule.stop();
-      stopAudio();
-    };
-  }, [stopAudio]);
-
-  // Start the interview on mount — seed with a greeting so Claude has at least one message
+  // Start the interview on mount
   useEffect(() => {
     sendMessage('Hi');
   }, []);
 
-  const handleMicPress = async () => {
-    if (speaking) return;
-
-    if (listening) {
-      ExpoSpeechRecognitionModule.stop();
-      return;
-    }
-
-    await stopAudio();
-    speechBufferRef.current = '';
-
-    try {
-      const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (!granted) {
-        Alert.alert('Permission denied', 'Microphone and speech recognition access is required.');
-        return;
-      }
-      ExpoSpeechRecognitionModule.start({
-        lang: 'en-US',
-        interimResults: false,
-        continuous: false,
-      });
-    } catch {
-      Alert.alert('Error', 'Could not start voice recognition. Please try again.');
-    }
+  const handleSend = async () => {
+    const text = inputText.trim();
+    if (!text || thinking) return;
+    setInputText('');
+    await animateTextOut();
+    sendMessage(text);
   };
 
   const handleThatsMe = async () => {
@@ -409,7 +203,10 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       {/* Title */}
       <Text style={styles.title}>Human</Text>
 
@@ -451,26 +248,21 @@ export default function OnboardingScreen() {
             <Circle cx={ORB_SIZE / 2} cy={ORB_SIZE / 2} r={ORB_SIZE / 2} fill="url(#coreGrad)" />
           </Svg>
         </Animated.View>
-
       </View>
 
       {/* Human's text */}
       <View style={styles.textArea}>
-        {listening ? (
-          <Text style={styles.listeningText}>Listening...</Text>
-        ) : (
-          <Animated.Text
-            style={[
-              styles.questionText,
-              {
-                opacity: textOpacity,
-                transform: [{ translateY: textTranslateY }],
-              },
-            ]}
-          >
-            {displayText}
-          </Animated.Text>
-        )}
+        <Animated.Text
+          style={[
+            styles.questionText,
+            {
+              opacity: textOpacity,
+              transform: [{ translateY: textTranslateY }],
+            },
+          ]}
+        >
+          {displayText}
+        </Animated.Text>
 
         <View style={styles.fadeTop} pointerEvents="none">
           <Svg width={width} height={30}>
@@ -497,9 +289,7 @@ export default function OnboardingScreen() {
         </View>
       </View>
 
-      {/* User's speech transcript — removed for cleaner UI */}
-
-      {/* Bottom — mic or "That's me!" */}
+      {/* Bottom — input or "That's me!" */}
       <View style={styles.bottomArea}>
         {done ? (
           <TouchableOpacity
@@ -512,26 +302,34 @@ export default function OnboardingScreen() {
             </Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            style={[styles.micButton, speaking && styles.micSpeaking, listening && styles.micListening]}
-            onPress={handleMicPress}
-            disabled={speaking}
-            activeOpacity={0.7}
-          >
-            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M12 1C10.34 1 9 2.34 9 4V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V4C15 2.34 13.66 1 12 1Z"
-                fill="#FFFFFF"
-              />
-              <Path
-                d="M17 12C17 14.76 14.76 17 12 17C9.24 17 7 14.76 7 12H5C5 15.53 7.61 18.43 11 18.92V22H13V18.92C16.39 18.43 19 15.53 19 12H17Z"
-                fill="#FFFFFF"
-              />
-            </Svg>
-          </TouchableOpacity>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.textInput}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder="Type your answer..."
+              placeholderTextColor="#666666"
+              editable={!thinking}
+              onSubmitEditing={handleSend}
+              returnKeyType="send"
+              multiline={false}
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, (thinking || !inputText.trim()) && { opacity: 0.3 }]}
+              onPress={handleSend}
+              disabled={thinking || !inputText.trim()}
+            >
+              <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"
+                  fill="#FFFFFF"
+                />
+              </Svg>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -591,32 +389,36 @@ const styles = StyleSheet.create({
     height: 30,
   },
   bottomArea: {
-    paddingBottom: 60,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+    width: '100%',
     alignItems: 'center',
   },
-  listeningText: {
-    color: '#FF00DD',
-    fontSize: 15,
-    fontWeight: '500',
-    textAlign: 'center',
-    letterSpacing: 2,
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 400,
   },
-  micButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+  textInput: {
+    flex: 1,
+    height: 48,
     backgroundColor: '#1A1A1A',
-    borderWidth: 1.5,
-    borderColor: '#444444',
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    color: '#FFFFFF',
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  sendButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FF00DD',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  micSpeaking: {
-    opacity: 0.4,
-  },
-  micListening: {
-    backgroundColor: '#FF00DD',
-    borderColor: '#FF00DD',
+    marginLeft: 10,
   },
   continueButton: {
     backgroundColor: '#FFFFFF',
