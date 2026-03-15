@@ -42,6 +42,7 @@ async function respondToMatch(matchId: string, action: 'accept' | 'pass'): Promi
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
+        'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
       },
       body: JSON.stringify({ matchId, action }),
     },

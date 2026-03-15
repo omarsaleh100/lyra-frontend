@@ -24,6 +24,7 @@ export async function streamInterview(
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
+        'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
       },
       body: JSON.stringify({ messages }),
     },
